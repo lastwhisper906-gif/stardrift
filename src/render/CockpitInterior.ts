@@ -53,6 +53,8 @@ export class CockpitInterior {
   private readonly leverGroup: Group
   private yokeYaw = 0
   private yokePitch = 0
+  private leftArm!: Object3D
+  private rightArm!: Object3D
 
   constructor() {
     this.group = new Group()
@@ -185,8 +187,10 @@ export class CockpitInterior {
     this.yokeGroup.add(rBtn)
 
     // Arms
-    this.yokeGroup.add(this.buildArm(-0.24, 0.20, true))
-    this.yokeGroup.add(this.buildArm(0.24, 0.20, false))
+    this.leftArm  = this.buildArm(-0.24, 0.20, true)
+    this.rightArm = this.buildArm( 0.24, 0.20, false)
+    this.yokeGroup.add(this.leftArm)
+    this.yokeGroup.add(this.rightArm)
 
     this.group.add(this.yokeGroup)
   }
@@ -278,5 +282,11 @@ export class CockpitInterior {
       leverArm.rotation.x = cur
       leverHandle.rotation.x = cur
     }
+  }
+
+  /** Show pilot arms only in 1st-person PILOTING mode */
+  setArmsVisible(visible: boolean): void {
+    this.leftArm.visible  = visible
+    this.rightArm.visible = visible
   }
 }

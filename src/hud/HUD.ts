@@ -26,6 +26,7 @@ export class HUD {
   private readonly warningPanel: HTMLElement
   private readonly distEl: HTMLElement
   private readonly damageOverlay: HTMLElement
+  private interactPrompt!: HTMLElement
   private prevHull = 100
 
   constructor() {
@@ -72,6 +73,20 @@ export class HUD {
     `
     this.root.appendChild(warnPanel)
 
+    // ── F-key interact prompt (bottom center) ────────────────────────────
+    const interactPrompt = document.createElement('div')
+    interactPrompt.style.cssText = `
+      position:absolute;bottom:28px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(0,20,40,0.60);
+      border:1px solid rgba(0,170,255,0.35);
+      padding:6px 18px;border-radius:3px;
+      color:#00aaff;font-size:13px;letter-spacing:2px;
+      text-shadow:0 0 8px #00aaff;
+    `
+    interactPrompt.textContent = '[F]  SIT AT HELM'
+    this.root.appendChild(interactPrompt)
+
     // ── Damage vignette overlay ───────────────────────────────────────────
     const dmg = document.createElement('div')
     dmg.style.cssText = `
@@ -93,6 +108,7 @@ export class HUD {
     this.warningPanel = warnPanel
     this.distEl = document.getElementById('hud-dist')!
     this.damageOverlay = dmg
+    this.interactPrompt = interactPrompt
   }
 
   update(ship: ShipState, phase: GamePhase, asteroidDist?: number): void {
@@ -132,10 +148,13 @@ export class HUD {
     }
   }
 
+  setInteractPrompt(show: boolean): void {
+    this.interactPrompt.style.display = show ? 'block' : 'none'
+  }
+
   private flashDamage(): void {
     this.damageOverlay.style.transition = 'none'
     this.damageOverlay.style.opacity = '1'
-    // Kick off fade in next microtask so transition fires
     requestAnimationFrame(() => {
       this.damageOverlay.style.transition = 'opacity 0.65s ease-out'
       this.damageOverlay.style.opacity = '0'
