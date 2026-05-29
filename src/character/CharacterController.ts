@@ -113,15 +113,21 @@ export class CharacterController {
     return { mesh: g, legL, legR, armL, armR }
   }
 
-  /** fwd = W/S axis (+1 = toward helm), right = A/D axis */
-  move(fwd: number, right: number, dt: number, isRunning = false): void {
+  /** Camera-relative movement: W/S in camera-forward dir, A/D in camera-right dir */
+  move(fwd: number, right: number, dt: number, isRunning = false, camYaw = Math.PI): void {
     const speed  = this.isCrouching ? CHAR_SPEED * 0.4
                  : isRunning        ? CHAR_SPEED_RUN
                  :                    CHAR_SPEED
     const moving = Math.abs(fwd) > 0.01 || Math.abs(right) > 0.01
 
-    this.position.x += right * speed * dt
-    this.position.z += -fwd  * speed * dt
+    // Forward and right vectors from camera yaw
+    const fwdX  =  Math.sin(camYaw)
+    const fwdZ  =  Math.cos(camYaw)
+    const rightX = -Math.cos(camYaw)
+    const rightZ =  Math.sin(camYaw)
+
+    this.position.x += (fwd * fwdX + right * rightX) * speed * dt
+    this.position.z += (fwd * fwdZ + right * rightZ) * speed * dt
     this.resolveCollisions()
 
     // Vertical physics
@@ -136,9 +142,9 @@ export class CharacterController {
     const crouchOff = this.isCrouching ? -0.35 : 0
     this.mesh.position.set(this.position.x, this.position.y + crouchOff, this.position.z)
 
-    // Facing direction
-    const dx = right * speed * dt
-    const dz = -fwd  * speed * dt
+    // Facing direction (toward movement in world space)
+    const dx = (fwd * fwdX + right * rightX) * speed * dt
+    const dz = (fwd * fwdZ + right * rightZ) * speed * dt
     if (Math.abs(dx) > 0.0005 || Math.abs(dz) > 0.0005) {
       this.facingYaw = Math.atan2(dx, dz)
       this.mesh.rotation.y = this.facingYaw

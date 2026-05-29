@@ -167,7 +167,7 @@ function loop(): void {
     const axes = keyboard.getWalkAxes()
     if (keyboard.consumeJustPressed('Space')) character.jump()
     if (keyboard.consumeJustPressed('KeyC'))  character.toggleCrouch()
-    character.move(axes.fwd, axes.right, dt, axes.isRunning)
+    character.move(axes.fwd, axes.right, dt, axes.isRunning, camCtrl.getCamYaw())
 
     // ── Repair station interaction ─────────────────────────────────────────
     // Left secondary station centre approx (x=-3.65, z=3.25)

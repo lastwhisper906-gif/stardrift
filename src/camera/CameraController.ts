@@ -91,4 +91,7 @@ export class CameraController {
   setWalkYaw(yaw: number): void {
     this.camYaw = yaw
   }
+
+  /** Current smoothed camera yaw — used by CharacterController for relative movement */
+  getCamYaw(): number { return this.camYaw }
 }
