@@ -36,6 +36,9 @@ export class KeyboardInput {
     }
   }
 
+  /** True while key is held down. */
+  isHeld(code: string): boolean { return !!this.keys[code] }
+
   /** Returns true once per key press; clears the flag. */
   consumeJustPressed(code: string): boolean {
     if (this.justPressedKeys.has(code)) {

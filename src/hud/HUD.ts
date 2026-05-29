@@ -27,6 +27,10 @@ export class HUD {
   private readonly distEl: HTMLElement
   private readonly damageOverlay: HTMLElement
   private interactPrompt!: HTMLElement
+  private repairPrompt!: HTMLElement
+  private alienPanel!: HTMLElement
+  private alienDistEl!: HTMLElement
+  private alienHpEl!: HTMLElement
   private prevHull = 100
 
   constructor() {
@@ -87,6 +91,36 @@ export class HUD {
     interactPrompt.textContent = '[F]  SIT AT HELM'
     this.root.appendChild(interactPrompt)
 
+    // ── Repair prompt (secondary prompt above interact) ───────────────────
+    const repairPrompt = document.createElement('div')
+    repairPrompt.style.cssText = `
+      position:absolute;bottom:68px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(0,25,0,0.65);
+      border:1px solid rgba(0,255,100,0.35);
+      padding:6px 18px;border-radius:3px;
+      color:#00ff88;font-size:13px;letter-spacing:2px;
+      text-shadow:0 0 8px #00ff88;
+    `
+    this.root.appendChild(repairPrompt)
+
+    // ── Alien encounter warning panel ─────────────────────────────────────
+    const alienPanel = document.createElement('div')
+    alienPanel.style.cssText = `
+      position:absolute;top:14px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(0,25,5,0.65);
+      border:1px solid rgba(0,200,80,0.35);
+      padding:8px 20px;border-radius:3px;
+      text-shadow:0 0 10px #00ff44;
+    `
+    alienPanel.innerHTML = `
+      <div style="color:#00ff44;font-size:15px;font-weight:bold;letter-spacing:3px">⚠ ALIEN VESSEL ⚠</div>
+      <div id="hud-alien-dist" style="color:#88ffaa;font-size:11px;margin-top:3px">DIST: ---</div>
+      <div id="hud-alien-hp" style="color:#88ffaa;font-size:11px">HULL: ████</div>
+    `
+    this.root.appendChild(alienPanel)
+
     // ── Damage vignette overlay ───────────────────────────────────────────
     const dmg = document.createElement('div')
     dmg.style.cssText = `
@@ -106,9 +140,13 @@ export class HUD {
     this.o2Fill = document.getElementById('hud-o2-fill')!
     this.o2Val = document.getElementById('hud-o2-val')!
     this.warningPanel = warnPanel
-    this.distEl = document.getElementById('hud-dist')!
-    this.damageOverlay = dmg
+    this.distEl         = document.getElementById('hud-dist')!
     this.interactPrompt = interactPrompt
+    this.repairPrompt   = repairPrompt
+    this.alienPanel     = alienPanel
+    this.alienDistEl    = document.getElementById('hud-alien-dist')!
+    this.alienHpEl      = document.getElementById('hud-alien-hp')!
+    this.damageOverlay = dmg
   }
 
   update(ship: ShipState, phase: GamePhase, asteroidDist?: number): void {
@@ -150,6 +188,24 @@ export class HUD {
 
   setInteractPrompt(show: boolean): void {
     this.interactPrompt.style.display = show ? 'block' : 'none'
+  }
+
+  setRepairPrompt(show: boolean, hull: number): void {
+    this.repairPrompt.style.display = show ? 'block' : 'none'
+    if (show) {
+      this.repairPrompt.textContent = hull < 100
+        ? `HOLD [E] TO REPAIR — HULL ${Math.round(hull)}%`
+        : 'HULL INTACT'
+    }
+  }
+
+  setAlienWarning(show: boolean, dist?: number, health?: number): void {
+    this.alienPanel.style.display = show ? 'block' : 'none'
+    if (show && dist !== undefined && health !== undefined) {
+      this.alienDistEl.textContent = `DIST: ${Math.round(dist)} m`
+      const bars = '█'.repeat(Math.max(0, health)) + '░'.repeat(Math.max(0, 4 - health))
+      this.alienHpEl.textContent   = `HULL: ${bars}`
+    }
   }
 
   private flashDamage(): void {

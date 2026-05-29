@@ -1,4 +1,4 @@
-import { Euler } from 'three'
+import { Euler, Vector3 } from 'three'
 import { SceneManager } from './render/SceneManager.js'
 import { CockpitRoom } from './render/CockpitRoom.js'
 import { LocalRoom } from './state/LocalRoom.js'
@@ -6,6 +6,7 @@ import { InputRouter } from './input/InputRouter.js'
 import { KeyboardInput } from './input/KeyboardInput.js'
 import { EventManager } from './events/EventManager.js'
 import { AsteroidEvent } from './events/AsteroidEvent.js'
+import { AlienEvent } from './events/AlienEvent.js'
 import { HUD } from './hud/HUD.js'
 import { CharacterController } from './character/CharacterController.js'
 import { CameraController } from './camera/CameraController.js'
@@ -45,8 +46,10 @@ camCtrl.setMode('walking')
 
 // ── Events ────────────────────────────────────────────────────────────────────
 const asteroidEvent = new AsteroidEvent(scene.scene, room)
-const eventManager = new EventManager(room)
+const alienEvent    = new AlienEvent(scene.scene, room)
+const eventManager  = new EventManager(room)
 eventManager.register(asteroidEvent)
+eventManager.register(alienEvent)
 
 // ── HUD ───────────────────────────────────────────────────────────────────────
 const hud = new HUD()
@@ -109,6 +112,17 @@ function loop(): void {
     if (keyboard.consumeJustPressed('KeyC'))  character.toggleCrouch()
     character.move(axes.fwd, axes.right, dt, axes.isRunning)
 
+    // ── Repair station interaction ─────────────────────────────────────────
+    // Left secondary station centre approx (x=-3.65, z=3.25)
+    const rdx = character.position.x - (-3.65)
+    const rdz = character.position.z - 3.25
+    const nearRepair = Math.sqrt(rdx * rdx + rdz * rdz) < 2.5
+    if (nearRepair && keyboard.isHeld('KeyE') && room.getState().ship.hull < 100) {
+      const st = room.getState()
+      room.setState({ ship: { ...st.ship, hull: Math.min(100, st.ship.hull + 5 * dt) } })
+    }
+    hud.setRepairPrompt(nearRepair && room.getState().ship.hull < 100, room.getState().ship.hull)
+
     // Entrance door animation
     cockpitRoom.update(character.position.z, dt)
 
@@ -122,9 +136,21 @@ function loop(): void {
   if ((mode === 'piloting' || mode === 'exterior') && phase === 'PILOTING') {
     pilotingTimer += dt
     if (pilotingTimer >= nextTriggerDelay) {
-      pilotingTimer = 0
-      nextTriggerDelay = 25 + Math.random() * 20
-      eventManager.trigger('asteroid')
+      pilotingTimer    = 0
+      nextTriggerDelay = 22 + Math.random() * 22
+      // Alternate: every other trigger is an alien event
+      const useAlien = Math.random() < 0.45
+      eventManager.trigger(useAlien ? 'alien' : 'asteroid')
+    }
+    // Player fires at alien (Space key while piloting)
+    if (keyboard.consumeJustPressed('Space') && eventManager.getActiveEventId() === 'alien') {
+      const state = room.getState()
+      const [rx, ry] = state.ship.rotation
+      const shipFwd = new Vector3(
+        -Math.sin(ry) * Math.cos(rx), Math.sin(rx), -Math.cos(ry) * Math.cos(rx),
+      )
+      const shipPos = new Vector3(...state.ship.position as [number, number, number])
+      alienEvent.shoot(shipPos, shipFwd)
     }
   } else {
     pilotingTimer = 0
@@ -148,11 +174,15 @@ function loop(): void {
   const nearHelm = mode === 'walking' && character.isNearHelm()
   hud.setInteractPrompt(nearHelm)
 
-  const asteroidDist =
-    eventManager.getActiveEventId() === 'asteroid'
-      ? asteroidEvent.getDistanceToShip()
-      : undefined
+  const activeEvent = eventManager.getActiveEventId()
+  const asteroidDist = activeEvent === 'asteroid' ? asteroidEvent.getDistanceToShip() : undefined
   hud.update(ship, room.getState().phase, asteroidDist)
+
+  if (activeEvent === 'alien') {
+    hud.setAlienWarning(true, alienEvent.getDistanceToShip(), alienEvent.getHealth())
+  } else {
+    hud.setAlienWarning(false)
+  }
 
   scene.render()
   requestAnimationFrame(loop)
