@@ -40,6 +40,8 @@ export class HUD {
   private hitFlash!: HTMLElement
   private titleScreen!: HTMLElement
   private combatPrompt!: HTMLElement
+  private stationPanel!: HTMLElement
+  private stationText!: HTMLElement
   private prevHull = 100
   private _titleDismissed = false
 
@@ -155,6 +157,19 @@ export class HUD {
     `
     this.root.appendChild(titleScreen)
 
+    // ── Station waypoint (bottom-center of top area) ─────────────────────
+    const stationPanel = document.createElement('div')
+    stationPanel.style.cssText = `
+      position:absolute;top:70px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(0,15,25,0.55);
+      border:1px solid rgba(0,160,200,0.25);
+      padding:5px 16px;border-radius:3px;
+      color:#00aacc;font-size:11px;letter-spacing:2px;
+    `
+    stationPanel.innerHTML = '<span id="hud-station-text">STATION: --- km</span>'
+    this.root.appendChild(stationPanel)
+
     // ── Combat prompt (Space to fire) ─────────────────────────────────────
     const combatPrompt = document.createElement('div')
     combatPrompt.style.cssText = `
@@ -250,6 +265,8 @@ export class HUD {
     this.alienPanel     = alienPanel
     this.alienDistEl    = document.getElementById('hud-alien-dist')!
     this.alienHpEl      = document.getElementById('hud-alien-hp')!
+    this.stationPanel   = stationPanel
+    this.stationText    = document.getElementById('hud-station-text')!
     this.gameOverlay    = gameOverlay
     this.modeIndicator  = modeIndicator
     this.missionPanel   = missionPanel
@@ -320,6 +337,22 @@ export class HUD {
 
   setO2Prompt(show: boolean): void {
     this.o2Prompt.style.display = show ? 'block' : 'none'
+  }
+
+  setStationWaypoint(show: boolean, distM?: number, dockReady?: boolean): void {
+    this.stationPanel.style.display = show ? 'block' : 'none'
+    if (show && distM !== undefined) {
+      if (dockReady) {
+        this.stationText.textContent = '▶ DOCK [SPACE] ◀'
+        this.stationPanel.style.color = '#00ff88'
+        this.stationPanel.style.borderColor = 'rgba(0,200,100,0.5)'
+      } else {
+        const km = (distM / 1000).toFixed(1)
+        this.stationText.textContent = `STATION: ${km} km`
+        this.stationPanel.style.color = '#00aacc'
+        this.stationPanel.style.borderColor = 'rgba(0,160,200,0.25)'
+      }
+    }
   }
 
   isTitleDismissed(): boolean { return this._titleDismissed }

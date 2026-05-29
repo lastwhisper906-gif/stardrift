@@ -3,6 +3,7 @@ import {
   Group,
   Mesh,
   MeshStandardMaterial,
+  PointLight,
   Scene,
   Vector3,
 } from 'three'
@@ -27,17 +28,20 @@ export class AlienEvent implements IEvent {
 
   private readonly mesh: Group
   private readonly alienPos = new Vector3()
-  private alienHealth = 4
-  private timer       = 0
-  private shootTimer  = 0
-  private ramCooldown = 0
-  private phase: 'approach' | 'retreat' = 'approach'
+  private alienHealth   = 4
+  private timer         = 0
+  private shootTimer    = 0
+  private ramCooldown   = 0
+  private phase: 'approach' | 'retreat' | 'exploding' = 'approach'
+  private explodeTimer  = 0
+  private readonly explosionLight: PointLight
 
   constructor(
     private readonly scene: Scene,
     private readonly room: IStateRoom,
   ) {
-    this.mesh = this.buildMesh()
+    this.mesh           = this.buildMesh()
+    this.explosionLight = new PointLight(0xff8800, 0, 80)
   }
 
   private buildMesh(): Group {
@@ -100,6 +104,7 @@ export class AlienEvent implements IEvent {
     )
     this.mesh.position.copy(this.alienPos)
     this.scene.add(this.mesh)
+    this.scene.add(this.explosionLight)
     this.alienHealth  = 4
     this.timer        = 0
     this.shootTimer   = SHOOT_INTERVAL * 0.5
@@ -146,18 +151,31 @@ export class AlienEvent implements IEvent {
       this.room.setState({ ship: { ...state.ship, hull: newHull } })
     }
 
+    // Explosion animation
+    if (this.phase === 'exploding') {
+      this.explodeTimer -= dt
+      this.explosionLight.intensity = Math.max(0, this.explodeTimer / 0.8) * 20
+      this.explosionLight.position.copy(this.alienPos)
+      this.mesh.visible = this.explodeTimer > 0.4
+      return
+    }
+
     // Retreat if timer exceeded
     if (this.timer > MAX_DURATION) this.phase = 'retreat'
   }
 
   /** Called when player fires weapons (Space in piloting mode) */
   shoot(shipPos: Vector3, shipForward: Vector3): boolean {
-    const dist     = this.alienPos.distanceTo(shipPos)
-    const toAlien  = this.alienPos.clone().sub(shipPos).normalize()
-    const aim      = shipForward.dot(toAlien)
+    const dist    = this.alienPos.distanceTo(shipPos)
+    const toAlien = this.alienPos.clone().sub(shipPos).normalize()
+    const aim     = shipForward.dot(toAlien)
     if (aim > 0.65 && dist < 120) {
       this.alienHealth--
-      if (this.alienHealth <= 0) this.phase = 'retreat'
+      if (this.alienHealth <= 0) {
+        this.phase        = 'exploding'
+        this.explodeTimer = 0.8
+        this.explosionLight.position.copy(this.alienPos)
+      }
       return true
     }
     return false
@@ -173,10 +191,13 @@ export class AlienEvent implements IEvent {
 
   onExit(): void {
     this.scene.remove(this.mesh)
+    this.scene.remove(this.explosionLight)
+    this.explosionLight.intensity = 0
   }
 
   isComplete(): boolean {
-    if (this.alienHealth <= 0) return true
+    if (this.phase === 'exploding') return this.explodeTimer <= 0
+    if (this.alienHealth <= 0)  return true
     if (this.phase === 'retreat' && this.getDistanceToShip() > SPAWN_DIST) return true
     return false
   }

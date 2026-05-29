@@ -242,6 +242,12 @@ function loop(): void {
   if (ship.hull < prevHull - 0.5) audio.playImpact()
   prevHull = ship.hull
 
+  // Pre-compute station distance for HUD and docking
+  const _sp = ship.position
+  const [_sx, _sy, _sz] = SpaceStation.POSITION
+  const distToStation = Math.sqrt((_sp[0]-_sx)**2 + (_sp[1]-_sy)**2 + (_sp[2]-_sz)**2)
+  const shipSpeed     = Math.sqrt(ship.velocity[0]**2 + ship.velocity[1]**2 + ship.velocity[2]**2)
+
   const activeEvent = eventManager.getActiveEventId()
   const asteroidDist = activeEvent === 'asteroid' ? asteroidEvent.getDistanceToShip() : undefined
   hud.update(ship, room.getState().phase, asteroidDist)
@@ -250,23 +256,24 @@ function loop(): void {
     hud.setAlienWarning(true, alienEvent.getDistanceToShip(), alienEvent.getHealth())
     const inRange = (mode === 'piloting' || mode === 'exterior') && alienEvent.getDistanceToShip() < 120
     hud.setCombatPrompt(inRange)
+    hud.setStationWaypoint(false)
   } else {
     hud.setAlienWarning(false)
     hud.setCombatPrompt(false)
+    // Show station waypoint when not in event
+    const showStation = (mode === 'piloting' || mode === 'exterior') && !gameOver
+    const dockReady   = distToStation < 35 && shipSpeed < 6
+    hud.setStationWaypoint(showStation, distToStation, dockReady)
   }
 
   // ── Mode indicator ────────────────────────────────────────────────────────
   hud.setMode(mode === 'exterior' ? 'EXT VIEW' : mode)
 
   // ── Mission progress + docking check ────────────────────────────────────
-  const [px, py, pz] = ship.position
+  const [px, py, pz]   = ship.position
   const distFromOrigin = Math.sqrt(px * px + py * py + pz * pz)
   hud.setMissionProgress(distFromOrigin)
 
-  // Docking with space station
-  const [sx, sy, sz] = SpaceStation.POSITION
-  const distToStation = Math.sqrt((px-sx)**2 + (py-sy)**2 + (pz-sz)**2)
-  const shipSpeed     = Math.sqrt(ship.velocity[0]**2 + ship.velocity[1]**2 + ship.velocity[2]**2)
   if (!gameOver && distToStation < 35 && shipSpeed < 6 && keyboard.consumeJustPressed('Space')) {
     const st = room.getState()
     room.setState({ ship: { ...st.ship, hull: 100, oxygen: 100 } })
