@@ -268,6 +268,11 @@ function loop(): void {
                      : undefined
   hud.update(ship, room.getState().phase, asteroidDist, activeEvent ?? 'asteroid')
 
+  // EVA progress
+  hud.setEvaProgress(activeEvent === 'eva', activeEvent === 'eva' ? evaEvent.getProgress() : 0)
+  // HUD clock (dock banner timer)
+  hud.tick(dt)
+
   if (activeEvent === 'alien') {
     hud.setAlienWarning(true, alienEvent.getDistanceToShip(), alienEvent.getHealth())
     const inRange = (mode === 'piloting' || mode === 'exterior') && alienEvent.getDistanceToShip() < 120
@@ -295,6 +300,7 @@ function loop(): void {
     room.setState({ ship: { ...st.ship, hull: 100, oxygen: 100 } })
     audio.playDock()
     hud.flashHit()
+    hud.showDockSuccess()
   }
 
   // ── Win / lose detection ──────────────────────────────────────────────────

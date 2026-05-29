@@ -43,6 +43,9 @@ export class HUD {
   private combatPrompt!: HTMLElement
   private stationPanel!: HTMLElement
   private stationText!: HTMLElement
+  private dockBanner!: HTMLElement
+  private evaBanner!: HTMLElement
+  private dockTimer = 0
   private prevHull = 100
   private _titleDismissed = false
 
@@ -269,6 +272,40 @@ export class HUD {
     this.alienHpEl      = document.getElementById('hud-alien-hp')!
     this.stationPanel   = stationPanel
     this.stationText    = document.getElementById('hud-station-text')!
+
+    // ── Docking success banner ─────────────────────────────────────────────
+    const dockBanner = document.createElement('div')
+    dockBanner.style.cssText = `
+      position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);
+      text-align:center;display:none;
+      background:rgba(0,20,10,0.75);
+      border:1px solid rgba(0,255,100,0.45);
+      padding:14px 30px;border-radius:5px;
+      color:#00ff88;font-size:18px;letter-spacing:4px;
+      text-shadow:0 0 16px #00ff88;
+    `
+    dockBanner.textContent = '✓ DOCKED  —  HULL & O₂ RESTORED'
+    this.root.appendChild(dockBanner)
+
+    // ── EVA progress banner ────────────────────────────────────────────────
+    const evaBanner = document.createElement('div')
+    evaBanner.style.cssText = `
+      position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);
+      text-align:center;display:none;
+      background:rgba(10,20,30,0.75);
+      border:1px solid rgba(255,160,0,0.35);
+      padding:10px 24px;border-radius:4px;
+      color:#ffaa00;font-size:13px;letter-spacing:3px;
+    `
+    evaBanner.innerHTML = `
+      EVA IN PROGRESS — REPAIRING HULL<br>
+      <span style="display:inline-block;width:160px;height:6px;background:#1a1200;border:1px solid rgba(255,160,0,0.3);border-radius:2px;margin-top:6px;vertical-align:middle">
+        <span id="hud-eva-fill" style="display:block;height:100%;width:0%;background:#ffaa00;border-radius:2px;transition:width 0.3s"></span>
+      </span>
+    `
+    this.root.appendChild(evaBanner)
+    this.dockBanner     = dockBanner
+    this.evaBanner      = evaBanner
     this.gameOverlay    = gameOverlay
     this.modeIndicator  = modeIndicator
     this.missionPanel   = missionPanel
@@ -345,6 +382,26 @@ export class HUD {
 
   setO2Prompt(show: boolean): void {
     this.o2Prompt.style.display = show ? 'block' : 'none'
+  }
+
+  showDockSuccess(): void {
+    this.dockBanner.style.display = 'block'
+    this.dockTimer = 3.5
+  }
+
+  setEvaProgress(show: boolean, progress = 0): void {
+    this.evaBanner.style.display = show ? 'block' : 'none'
+    if (show) {
+      const fill = document.getElementById('hud-eva-fill')
+      if (fill) fill.style.width = `${Math.round(progress * 100)}%`
+    }
+  }
+
+  tick(dt: number): void {
+    if (this.dockTimer > 0) {
+      this.dockTimer -= dt
+      if (this.dockTimer <= 0) this.dockBanner.style.display = 'none'
+    }
   }
 
   setStationWaypoint(show: boolean, distM?: number, dockReady?: boolean): void {
