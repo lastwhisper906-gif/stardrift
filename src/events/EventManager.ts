@@ -42,4 +42,13 @@ export class EventManager {
   getActiveEventId(): string | null {
     return this.active?.id ?? null
   }
+
+  /** Force-exit the current event and return to PILOTING (used on game reset). */
+  clear(): void {
+    if (this.active != null) {
+      this.active.onExit()
+      this.active = null
+    }
+    this.room.setState({ phase: 'PILOTING' })
+  }
 }

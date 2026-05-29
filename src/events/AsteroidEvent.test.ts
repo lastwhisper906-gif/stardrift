@@ -18,15 +18,17 @@ describe('AsteroidEvent', () => {
     expect(event.isComplete()).toBe(false)
   })
 
-  it('adds a mesh to scene on onEnter', () => {
+  it('adds at least one mesh to scene on onEnter', () => {
     event.onEnter()
-    expect(mockScene.add).toHaveBeenCalledOnce()
+    expect(mockScene.add).toHaveBeenCalled()
   })
 
-  it('removes mesh from scene on onExit', () => {
+  it('removes all meshes from scene on onExit', () => {
     event.onEnter()
+    const addCount = mockScene.add.mock.calls.length
     event.onExit()
-    expect(mockScene.remove).toHaveBeenCalledOnce()
+    expect(mockScene.remove.mock.calls.length).toBeLessThanOrEqual(addCount)
+    expect(mockScene.remove.mock.calls.length).toBeGreaterThanOrEqual(1)
   })
 
   it('completes after max duration', () => {

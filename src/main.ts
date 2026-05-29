@@ -73,6 +73,7 @@ let nextTriggerDelay = 20
 let gameOver = false
 
 function resetGame(): void {
+  eventManager.clear()
   room.setState({
     ship: {
       position: [0, 0, 0], rotation: [0, 0, 0],

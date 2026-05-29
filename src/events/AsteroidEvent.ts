@@ -20,13 +20,17 @@ const MAX_DURATION = 38  // s — safety timeout
 export class AsteroidEvent implements IEvent {
   readonly id = 'asteroid'
 
-  private mesh: Mesh | null = null
-  private readonly pos = new Vector3()
-  private readonly vel = new Vector3()
-  private done = false
-  private hitCooldown = 0
-  private elapsed = 0
-  private distToShip = Infinity
+  private mesh:  Mesh | null = null
+  private mesh2: Mesh | null = null   // second asteroid (25% chance)
+  private readonly pos  = new Vector3()
+  private readonly vel  = new Vector3()
+  private readonly pos2 = new Vector3()
+  private readonly vel2 = new Vector3()
+  private done         = false
+  private hitCooldown  = 0
+  private hit2Cooldown = 0
+  private elapsed      = 0
+  private distToShip   = Infinity
 
   constructor(
     private readonly scene: Scene,
@@ -37,7 +41,10 @@ export class AsteroidEvent implements IEvent {
     this.done = false
     this.elapsed = 0
     this.hitCooldown = 0
+    this.hit2Cooldown = 0
     this.spawn()
+    // 30% chance of a second asteroid wing
+    if (Math.random() < 0.30) this.spawnSecond()
   }
 
   private spawn(): void {
@@ -73,6 +80,27 @@ export class AsteroidEvent implements IEvent {
     this.mesh.visible = true
   }
 
+  private spawnSecond(): void {
+    const ship = this.room.getState().ship
+    const [px, py, pz] = ship.position
+    const [rx, ry] = ship.rotation
+    const fwd = new Vector3(
+      -Math.sin(ry) * Math.cos(rx), Math.sin(rx), -Math.cos(ry) * Math.cos(rx),
+    )
+    this.pos2.set(
+      px + fwd.x * SPAWN_DIST * 0.9 + (Math.random() - 0.5) * 50,
+      py + (Math.random() - 0.5) * 22,
+      pz + fwd.z * SPAWN_DIST * 0.9 + (Math.random() - 0.5) * 50,
+    )
+    const toShip = new Vector3(px - this.pos2.x, py - this.pos2.y, pz - this.pos2.z).normalize()
+    this.vel2.copy(toShip).multiplyScalar(SPEED * 0.8)
+    const geo  = new IcosahedronGeometry(RADIUS * 0.65, 1)
+    const mat2 = new MeshStandardMaterial({ color: 0x665544, roughness: 0.9, metalness: 0.08 })
+    this.mesh2 = new Mesh(geo, mat2)
+    this.scene.add(this.mesh2)
+    this.mesh2.position.copy(this.pos2)
+  }
+
   update(dt: number): void {
     this.elapsed += dt
     if (this.mesh == null) return
@@ -103,6 +131,28 @@ export class AsteroidEvent implements IEvent {
       this.vel.copy(away).multiplyScalar(SPEED * 0.7)
     }
 
+    // Second asteroid update
+    if (this.mesh2 != null) {
+      this.hit2Cooldown = Math.max(0, this.hit2Cooldown - dt)
+      this.mesh2.rotation.x -= 0.22 * dt
+      this.mesh2.rotation.z += 0.30 * dt
+      this.pos2.addScaledVector(this.vel2, dt)
+      this.mesh2.position.copy(this.pos2)
+      const dist2 = this.pos2.distanceTo(shipPos)
+      if (dist2 < HIT_DIST * 0.75 && this.hit2Cooldown <= 0) {
+        const state2 = this.room.getState()
+        this.room.setState({ ship: { ...state2.ship, hull: Math.max(0, state2.ship.hull - HIT_DAMAGE * 0.7) } })
+        this.hit2Cooldown = HIT_COOLDOWN
+        const away2 = this.pos2.clone().sub(shipPos).normalize()
+        this.vel2.copy(away2).multiplyScalar(SPEED * 0.6)
+      }
+      if (dist2 > ESCAPE_DIST) {
+        this.scene.remove(this.mesh2)
+        this.mesh2.geometry.dispose()
+        this.mesh2 = null
+      }
+    }
+
     if (this.distToShip > ESCAPE_DIST || this.elapsed > MAX_DURATION) {
       this.done = true
     }
@@ -113,6 +163,11 @@ export class AsteroidEvent implements IEvent {
       this.scene.remove(this.mesh)
       this.mesh.geometry.dispose()
       this.mesh = null
+    }
+    if (this.mesh2) {
+      this.scene.remove(this.mesh2)
+      this.mesh2.geometry.dispose()
+      this.mesh2 = null
     }
   }
 
