@@ -65,30 +65,43 @@ function loop(): void {
 
   const mode = camCtrl.mode
 
+  // ── Tab: toggle exterior ship view while piloting ────────────────────────
+  if (keyboard.consumeJustPressed('Tab') && (mode === 'piloting' || mode === 'exterior')) {
+    if (mode === 'exterior') {
+      camCtrl.setMode('piloting')
+      scene.shipExterior.group.visible = false
+    } else {
+      camCtrl.setMode('exterior')
+      scene.shipExterior.group.visible = true
+    }
+  }
+
   // ── F key: toggle WALKING ↔ PILOTING ────────────────────────────────────
   if (keyboard.consumeJustPressed('KeyF')) {
     if (mode === 'walking' && character.isNearHelm()) {
       camCtrl.setMode('piloting')
+      scene.shipExterior.group.visible = false
       character.mesh.visible = false
       scene.cockpit.setArmsVisible(true)
       hud.setInteractPrompt(false)
-    } else if (mode === 'piloting') {
+    } else if (mode === 'piloting' || mode === 'exterior') {
       character.placeAtHelm()
       camCtrl.setMode('walking')
-      camCtrl.setWalkYaw(Math.PI)  // snap camera behind character
+      camCtrl.setWalkYaw(Math.PI)
+      scene.shipExterior.group.visible = false
       character.mesh.visible = true
       scene.cockpit.setArmsVisible(false)
     }
   }
 
   // ── Input dispatch ───────────────────────────────────────────────────────
-  if (mode === 'piloting') {
+  if (mode === 'piloting' || mode === 'exterior') {
     const pilotInput = keyboard.getPilotInput()
     const state = room.getState()
     const next = router.dispatch('player1', pilotInput, state, dt)
     const physShip = updatePhysics(next.ship, dt)
     room.setState({ ship: physShip, tick: state.tick + 1 })
-    scene.cockpit.update(pilotInput, physShip, dt)
+    if (mode === 'piloting') scene.cockpit.update(pilotInput, physShip, dt)
   } else {
     // Character movement
     const axes = keyboard.getWalkAxes()
@@ -106,7 +119,7 @@ function loop(): void {
 
   // ── Events (only trigger when someone is at the helm) ───────────────────
   const phase = room.getState().phase
-  if (mode === 'piloting' && phase === 'PILOTING') {
+  if ((mode === 'piloting' || mode === 'exterior') && phase === 'PILOTING') {
     pilotingTimer += dt
     if (pilotingTimer >= nextTriggerDelay) {
       pilotingTimer = 0

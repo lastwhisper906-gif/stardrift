@@ -9,6 +9,7 @@ import {
 } from 'three'
 import { createStarField } from './StarField.js'
 import { CockpitInterior } from './CockpitInterior.js'
+import { ShipExterior } from './ShipExterior.js'
 
 // Pilot eye position inside the cockpit (shipGroup local space)
 const EYE_X = 0
@@ -21,6 +22,7 @@ export class SceneManager {
   readonly renderer: WebGLRenderer
   readonly shipGroup: Group
   readonly cockpit: CockpitInterior
+  readonly shipExterior: ShipExterior
 
   constructor() {
     this.scene = new Scene()
@@ -59,6 +61,10 @@ export class SceneManager {
     // Cockpit interior
     this.cockpit = new CockpitInterior()
     this.shipGroup.add(this.cockpit.group)
+
+    // Ship exterior hull (visible only in exterior camera mode)
+    this.shipExterior = new ShipExterior()
+    this.shipGroup.add(this.shipExterior.group)
 
     this.scene.add(this.shipGroup)
 

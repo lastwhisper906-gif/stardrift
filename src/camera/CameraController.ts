@@ -3,11 +3,14 @@ import type { Group } from 'three'
 import type { CharacterController } from '../character/CharacterController.js'
 import { ROOM } from '../render/CockpitRoom.js'
 
-export type CameraMode = 'walking' | 'piloting'
+export type CameraMode = 'walking' | 'piloting' | 'exterior'
 
-const PILOT_EYE = new Vector3(0, 0.08, 0.10)
-const WALK_UP   = 1.5
-const WALK_BACK = 3.2
+const PILOT_EYE  = new Vector3(0, 0.08, 0.10)
+// exterior camera in ship-local space (behind & above the ship)
+const EXT_POS    = new Vector3(0, 14, 38)
+const EXT_TARGET = new Vector3(0, 2, 8)
+const WALK_UP    = 1.5
+const WALK_BACK  = 3.2
 
 export class CameraController {
   mode: CameraMode = 'walking'
@@ -21,6 +24,15 @@ export class CameraController {
   ) {}
 
   update(character: CharacterController): void {
+    if (this.mode === 'exterior') {
+      // Camera in ship-local space — stays behind/above regardless of ship orientation
+      this.camera.position.copy(EXT_POS)
+      this._lookWorld.copy(EXT_TARGET)
+      this.shipGroup.localToWorld(this._lookWorld)
+      this.camera.lookAt(this._lookWorld)
+      return
+    }
+
     if (this.mode === 'piloting') {
       this.camera.position.copy(PILOT_EYE)
       this.camera.rotation.set(0, 0, 0)
