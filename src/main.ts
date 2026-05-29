@@ -11,6 +11,7 @@ import { AsteroidEvent } from './events/AsteroidEvent.js'
 import { AlienEvent } from './events/AlienEvent.js'
 import { BlackHoleEvent } from './events/BlackHoleEvent.js'
 import { EvaEvent } from './events/EvaEvent.js'
+import { SubshipEvent } from './events/SubshipEvent.js'
 import { HUD } from './hud/HUD.js'
 import { CharacterController } from './character/CharacterController.js'
 import { CameraController } from './camera/CameraController.js'
@@ -53,11 +54,13 @@ const asteroidEvent   = new AsteroidEvent(scene.scene, room)
 const alienEvent      = new AlienEvent(scene.scene, room)
 const blackHoleEvent  = new BlackHoleEvent(scene.scene, room)
 const evaEvent        = new EvaEvent(room)
+const subshipEvent    = new SubshipEvent(scene.scene, room)
 const eventManager    = new EventManager(room)
 eventManager.register(asteroidEvent)
 eventManager.register(alienEvent)
 eventManager.register(blackHoleEvent)
 eventManager.register(evaEvent)
+eventManager.register(subshipEvent)
 
 // ── HUD ───────────────────────────────────────────────────────────────────────
 const hud   = new HUD()
@@ -206,9 +209,10 @@ function loop(): void {
       const roll = Math.random()
       const hull = room.getState().ship.hull
       let eventId = 'asteroid'
-      if (roll < 0.30) eventId = 'alien'
-      else if (roll < 0.45) eventId = 'blackhole'
-      else if (hull < 40) eventId = 'eva'   // EVA only triggers when hull is critical
+      if (roll < 0.25)        eventId = 'alien'
+      else if (roll < 0.38)   eventId = 'blackhole'
+      else if (roll < 0.50)   eventId = 'subship'   // scout probe deploys
+      else if (hull < 40)     eventId = 'eva'        // EVA only when hull critical
       eventManager.trigger(eventId)
     }
     // Player fires at alien (Space key while piloting)
