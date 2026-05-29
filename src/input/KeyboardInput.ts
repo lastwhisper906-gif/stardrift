@@ -14,24 +14,25 @@ export class KeyboardInput {
     })
   }
 
-  /** PILOTING mode: W/S = throttle, A/D = yaw, Q/E = roll, R/F = pitch */
+  /** PILOTING mode: W/S=throttle, A/D=yaw, Q/E=roll, R/F=pitch, Z/X=vertical thrust */
   getPilotInput(): RawInput {
     const k = this.keys
     return {
       yaw:           (k['KeyA'] || k['ArrowLeft']  ? -1 : 0) + (k['KeyD'] || k['ArrowRight'] ? 1 : 0),
       pitch:         (k['KeyR'] ? -1 : 0) + (k['KeyF'] ? 1 : 0),
       roll:          (k['KeyQ'] ? -1 : 0) + (k['KeyE'] ? 1 : 0),
-      throttleDelta: (k['KeyW'] || k['ArrowUp']    ? 1  : 0) + (k['KeyS'] || k['ArrowDown']  ? -1 : 0),
-      verticalDelta: 0,
+      throttleDelta: (k['KeyW'] || k['ArrowUp']    ?  1 : 0) + (k['KeyS'] || k['ArrowDown']  ? -1 : 0),
+      verticalDelta: (k['KeyZ'] ?  1 : 0) + (k['KeyX'] ? -1 : 0),
     }
   }
 
-  /** WALKING mode: W/S = forward/back, A/D = strafe left/right */
-  getWalkAxes(): { fwd: number; right: number } {
+  /** WALKING mode: W/S=forward/back, A/D=strafe, Shift=run */
+  getWalkAxes(): { fwd: number; right: number; isRunning: boolean } {
     const k = this.keys
     return {
-      fwd:   (k['KeyW'] || k['ArrowUp']    ? 1 : 0) + (k['KeyS'] || k['ArrowDown']  ? -1 : 0),
-      right: (k['KeyD'] || k['ArrowRight'] ? 1 : 0) + (k['KeyA'] || k['ArrowLeft']  ? -1 : 0),
+      fwd:       (k['KeyW'] || k['ArrowUp']    ? 1 : 0) + (k['KeyS'] || k['ArrowDown']  ? -1 : 0),
+      right:     (k['KeyD'] || k['ArrowRight'] ? 1 : 0) + (k['KeyA'] || k['ArrowLeft']  ? -1 : 0),
+      isRunning: !!(k['ShiftLeft'] || k['ShiftRight']),
     }
   }
 

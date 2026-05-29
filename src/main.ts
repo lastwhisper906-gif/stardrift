@@ -75,6 +75,7 @@ function loop(): void {
     } else if (mode === 'piloting') {
       character.placeAtHelm()
       camCtrl.setMode('walking')
+      camCtrl.setWalkYaw(Math.PI)  // snap camera behind character
       character.mesh.visible = true
       scene.cockpit.setArmsVisible(false)
     }
@@ -89,8 +90,15 @@ function loop(): void {
     room.setState({ ship: physShip, tick: state.tick + 1 })
     scene.cockpit.update(pilotInput, physShip, dt)
   } else {
+    // Character movement
     const axes = keyboard.getWalkAxes()
-    character.move(axes.fwd, axes.right, dt)
+    if (keyboard.consumeJustPressed('Space')) character.jump()
+    if (keyboard.consumeJustPressed('KeyC'))  character.toggleCrouch()
+    character.move(axes.fwd, axes.right, dt, axes.isRunning)
+
+    // Entrance door animation
+    cockpitRoom.update(character.position.z, dt)
+
     const state = room.getState()
     const physShip = updatePhysics(state.ship, dt)
     room.setState({ ship: physShip, tick: state.tick + 1 })
@@ -108,7 +116,7 @@ function loop(): void {
   } else {
     pilotingTimer = 0
   }
-  if (keyboard.consumeJustPressed('KeyX') && phase === 'PILOTING') {
+  if (keyboard.consumeJustPressed('KeyP') && phase === 'PILOTING') {
     eventManager.trigger('asteroid')
   }
   eventManager.update(dt)

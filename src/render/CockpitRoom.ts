@@ -44,17 +44,43 @@ function mat(color: number, metalness = 0.3, roughness = 0.8, emissive = 0, ei =
 export class CockpitRoom {
   readonly group: Group
 
+  // Entrance door state
+  private readonly leftDoorPanel:  Group
+  private readonly rightDoorPanel: Group
+  private readonly sensorGreen:    Mesh
+  private readonly sensorRed:      Mesh
+  private doorTarget = 0
+  private doorOffset = 0
+
   constructor() {
     this.group = new Group()
     this.buildFloor()
     this.buildCeiling()
     this.buildFrontWindow()
     this.buildSideWalls()
-    this.buildBackWall()
+    // buildBackWall wires up door panel fields
+    const door = this.buildBackWall()
+    this.leftDoorPanel  = door.leftPanel
+    this.rightDoorPanel = door.rightPanel
+    this.sensorGreen    = door.sensorGreen
+    this.sensorRed      = door.sensorRed
     this.buildHelmSeat()
     this.buildSecondaryStations()
     this.buildBackEquipment()
     this.addLighting()
+  }
+
+  /** Animate entrance door — call every frame */
+  update(charZ: number, dt: number): void {
+    this.doorTarget = charZ > ROOM.backZ - 2.5 ? 0.65 : 0
+    this.doorOffset += (this.doorTarget - this.doorOffset) * Math.min(1, dt * 6)
+
+    this.leftDoorPanel.position.x  = -0.325 - this.doorOffset
+    this.rightDoorPanel.position.x =  0.325 + this.doorOffset
+
+    const isOpen = this.doorOffset > 0.05
+    this.sensorGreen.visible = isOpen
+    this.sensorRed.visible   = !isOpen
   }
 
   private buildFloor(): void {
@@ -222,48 +248,187 @@ export class CockpitRoom {
     }
   }
 
-  private buildBackWall(): void {
-    const W = ROOM.rightX - ROOM.leftX
-    const H = ROOM.ceilY  - ROOM.floorY
-    const cy = (ROOM.floorY + ROOM.ceilY) / 2
+  private buildBackWall(): {
+    leftPanel: Group; rightPanel: Group; sensorGreen: Mesh; sensorRed: Mesh
+  } {
+    const W   = ROOM.rightX - ROOM.leftX
+    const H   = ROOM.ceilY  - ROOM.floorY
+    const cy  = (ROOM.floorY + ROOM.ceilY) / 2
+    const fy  = ROOM.floorY
+    const z   = ROOM.backZ
+    const wz  = z + 0.07   // back-face of wall (outside room)
+    const fz  = z - 0.04   // front-face of panels (inside room)
 
-    const main = new Mesh(new BoxGeometry(W, H, 0.14), mat(0x0d0d16, 0.3))
-    main.position.set(0, cy, ROOM.backZ + 0.07)
-    this.group.add(main)
+    const doorW  = 1.3
+    const halfDW = doorW / 2   // 0.65
+    const doorH  = 2.2
 
-    // Large panel sections
+    // ── Wall segments around door opening ────────────────────────────────
+    const wallMat = mat(0x0d0d16, 0.3, 0.85)
+
+    // Left wall (x: -4.5 → -0.65), width = 3.85
+    const lwSeg = new Mesh(new BoxGeometry(3.85, H, 0.14), wallMat)
+    lwSeg.position.set(ROOM.leftX + 1.925, cy, wz)
+    this.group.add(lwSeg)
+
+    // Right wall (x: 0.65 → 4.5), width = 3.85
+    const rwSeg = new Mesh(new BoxGeometry(3.85, H, 0.14), wallMat)
+    rwSeg.position.set(ROOM.rightX - 1.925, cy, wz)
+    this.group.add(rwSeg)
+
+    // Header above door (full width, y: floorY+doorH → ceilY)
+    const headerH = H - doorH
+    const header = new Mesh(new BoxGeometry(W, headerH, 0.14), wallMat)
+    header.position.set(0, fy + doorH + headerH / 2, wz)
+    this.group.add(header)
+
+    // Tech panels on left and right of door
     const pMat = mat(0x131320, 0.25, 0.85)
-    for (const [px, pw, ph] of [
-      [-2.2,  3.0, 2.0],
-      [ 0,    2.2, 1.5],
-      [ 2.2,  3.0, 2.0],
-    ] as [number, number, number][]) {
-      const p = new Mesh(new BoxGeometry(pw, ph, 0.06), pMat)
-      p.position.set(px, 0.3, ROOM.backZ + 0.01)
+    for (const px of [-2.5, 2.5]) {
+      const p = new Mesh(new BoxGeometry(1.8, 1.9, 0.06), pMat)
+      p.position.set(px, cy - 0.2, wz + 0.02)
       this.group.add(p)
     }
 
     // Emergency-red bottom strip
-    const redMat = mat(0xff2200, 0.1, 0.5, 0xff1100, 0.4)
-    const strip = new Mesh(new BoxGeometry(W * 0.9, 0.055, 0.06), redMat)
-    strip.position.set(0, ROOM.floorY + 0.14, ROOM.backZ + 0.01)
+    const strip = new Mesh(new BoxGeometry(W * 0.9, 0.055, 0.06),
+      mat(0xff2200, 0.1, 0.5, 0xff1100, 0.4))
+    strip.position.set(0, fy + 0.14, wz + 0.02)
     this.group.add(strip)
 
-    // Door outline (center back)
-    const doorMat = mat(0x1a1a2a, 0.5, 0.6)
-    const door = new Mesh(new BoxGeometry(1.1, 2.2, 0.08), doorMat)
-    door.position.set(0, ROOM.floorY + 1.1, ROOM.backZ + 0.02)
-    this.group.add(door)
-    const doorFrame = mat(0x223344, 0.6, 0.4, 0x0a1520, 0.3)
-    for (const [dx, dy, dw, dh] of [
-      [0, ROOM.floorY + 2.2 + 0.05, 1.2, 0.10],  // top
-      [-0.55, ROOM.floorY + 1.1, 0.08, 2.2],       // left
-      [ 0.55, ROOM.floorY + 1.1, 0.08, 2.2],       // right
-    ] as [number, number, number, number][]) {
-      const f = new Mesh(new BoxGeometry(dw, dh, 0.06), doorFrame)
-      f.position.set(dx, dy, ROOM.backZ + 0.05)
-      this.group.add(f)
+    // ── Sci-fi door frame ──────────────────────────────────────────────────
+    const frameMat = mat(0x1a2030, 0.75, 0.25)
+    const glowMat  = mat(0x002233, 0.1, 0.2, 0x00ccff, 1.0)
+    const frmZ     = z - 0.02
+
+    // Top beam (wider than opening for mounting flanges)
+    const topBeam = new Mesh(new BoxGeometry(doorW + 0.32, 0.20, 0.15), frameMat)
+    topBeam.position.set(0, fy + doorH + 0.10, frmZ)
+    this.group.add(topBeam)
+
+    // Top beam inner glow strip
+    const tGlow = new Mesh(new BoxGeometry(doorW + 0.20, 0.028, 0.05), glowMat)
+    tGlow.position.set(0, fy + doorH - 0.015, frmZ)
+    this.group.add(tGlow)
+
+    // Left pillar
+    const lPillar = new Mesh(new BoxGeometry(0.17, doorH + 0.20, 0.15), frameMat)
+    lPillar.position.set(-halfDW - 0.085, fy + doorH / 2, frmZ)
+    this.group.add(lPillar)
+
+    // Left pillar inner glow strip
+    const lGlow = new Mesh(new BoxGeometry(0.028, doorH * 0.92, 0.05), glowMat)
+    lGlow.position.set(-halfDW + 0.015, fy + doorH / 2, frmZ)
+    this.group.add(lGlow)
+
+    // Right pillar
+    const rPillar = new Mesh(new BoxGeometry(0.17, doorH + 0.20, 0.15), frameMat)
+    rPillar.position.set(halfDW + 0.085, fy + doorH / 2, frmZ)
+    this.group.add(rPillar)
+
+    // Right pillar inner glow strip
+    const rGlow = new Mesh(new BoxGeometry(0.028, doorH * 0.92, 0.05), glowMat)
+    rGlow.position.set(halfDW - 0.015, fy + doorH / 2, frmZ)
+    this.group.add(rGlow)
+
+    // Hydraulic arm details (decorative pipe on outer side of each pillar)
+    for (const sx of [-1, 1] as const) {
+      const pipe = new Mesh(new BoxGeometry(0.04, doorH * 0.7, 0.04), frameMat)
+      pipe.position.set(sx * (halfDW + 0.22), fy + doorH * 0.5, frmZ - 0.02)
+      this.group.add(pipe)
     }
+
+    // ── Sliding door panels ───────────────────────────────────────────────
+    const panelW = halfDW          // 0.65 each
+    const panelH = doorH - 0.05   // 2.15
+    const panelY = fy + panelH / 2 + 0.025
+
+    const buildDoorPanel = (sign: number): Group => {
+      const pg = new Group()
+
+      // Base panel
+      const pBase = new Mesh(new BoxGeometry(panelW, panelH, 0.09),
+        mat(0x191926, 0.85, 0.25))
+      pg.add(pBase)
+
+      // 3 horizontal ridges
+      const ridgeMat = mat(0x252538, 0.7, 0.4)
+      for (let i = 0; i < 3; i++) {
+        const ridge = new Mesh(new BoxGeometry(panelW * 0.88, 0.045, 0.11), ridgeMat)
+        ridge.position.set(0, -panelH / 2 + 0.35 + i * 0.56, 0)
+        pg.add(ridge)
+      }
+
+      // Inner edge cyan glow (where panels meet when closed)
+      const edgeGlow = new Mesh(new BoxGeometry(0.028, panelH * 0.88, 0.11), glowMat)
+      edgeGlow.position.set(-sign * panelW / 2, 0, 0)
+      pg.add(edgeGlow)
+
+      // Hazard stripe at bottom
+      const hazard = new Mesh(new BoxGeometry(panelW * 0.82, 0.24, 0.095),
+        mat(0x221100, 0.2, 0.8, 0xcc5500, 0.35))
+      hazard.position.set(0, -panelH / 2 + 0.12, 0)
+      pg.add(hazard)
+
+      // Access panel / tech detail
+      const tech = new Mesh(new BoxGeometry(panelW * 0.5, 0.28, 0.09),
+        mat(0x0d1520, 0.3, 0.6, 0x001830, 0.2))
+      tech.position.set(sign * panelW * 0.12, panelH * 0.25, 0)
+      pg.add(tech)
+
+      // Initial position (closed): center at ±panelW/2
+      pg.position.set(sign * panelW / 2, panelY, fz)
+      this.group.add(pg)
+      return pg
+    }
+
+    const leftPanel  = buildDoorPanel(-1)
+    const rightPanel = buildDoorPanel(1)
+
+    // ── Floor threshold glow ──────────────────────────────────────────────
+    const thresh = new Mesh(new BoxGeometry(doorW * 0.88, 0.03, 0.16),
+      mat(0x002233, 0.1, 0.2, 0x00bbcc, 0.7))
+    thresh.position.set(0, fy + 0.015, z - 0.12)
+    this.group.add(thresh)
+
+    // ── Sensor pad (right side of door) ──────────────────────────────────
+    const sensorBase = new Mesh(new BoxGeometry(0.16, 0.28, 0.06),
+      mat(0x1a2030, 0.5, 0.4))
+    sensorBase.position.set(halfDW + 0.26, fy + 1.18, z - 0.08)
+    this.group.add(sensorBase)
+
+    // LED lights: red (closed) and green (open)
+    const sensorRed = new Mesh(new BoxGeometry(0.05, 0.05, 0.04),
+      mat(0x330000, 0.1, 0.5, 0xff2200, 1.0))
+    sensorRed.position.set(halfDW + 0.26, fy + 1.26, z - 0.11)
+    this.group.add(sensorRed)
+
+    const sensorGreen = new Mesh(new BoxGeometry(0.05, 0.05, 0.04),
+      mat(0x003300, 0.1, 0.5, 0x00ff55, 1.0))
+    sensorGreen.position.set(halfDW + 0.26, fy + 1.18, z - 0.11)
+    sensorGreen.visible = false
+    this.group.add(sensorGreen)
+
+    // Sensor label panel (decorative small buttons)
+    for (let i = 0; i < 2; i++) {
+      const btn = new Mesh(new BoxGeometry(0.04, 0.04, 0.04),
+        mat(0x112233, 0.3, 0.5, 0x003355, 0.5))
+      btn.position.set(halfDW + 0.26, fy + 1.08 - i * 0.07, z - 0.11)
+      this.group.add(btn)
+    }
+
+    // Overhead warning light
+    const warn = new Mesh(new BoxGeometry(0.14, 0.10, 0.14),
+      mat(0x221100, 0.2, 0.5, 0xffaa00, 0.45))
+    warn.position.set(0, fy + doorH + 0.26, frmZ)
+    this.group.add(warn)
+
+    // Point light inside door frame for glow effect
+    const doorLight = new PointLight(0x00aaee, 0.8, 3.5)
+    doorLight.position.set(0, fy + doorH / 2, z - 0.2)
+    this.group.add(doorLight)
+
+    return { leftPanel, rightPanel, sensorGreen, sensorRed }
   }
 
   private buildHelmSeat(): void {

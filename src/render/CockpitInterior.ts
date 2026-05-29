@@ -268,7 +268,7 @@ export class CockpitInterior {
     // Yoke: smoothly tracks input
     const MAX_YAW   = Math.PI / 9   // ±20°
     const MAX_PITCH = Math.PI / 10  // ±18°
-    this.yokeYaw   = lerp(this.yokeYaw,   -raw.yaw   * MAX_YAW,   dt * 10)
+    this.yokeYaw   = lerp(this.yokeYaw,    raw.yaw   * MAX_YAW,   dt * 10)
     this.yokePitch = lerp(this.yokePitch,  raw.pitch  * MAX_PITCH, dt * 10)
     this.yokeGroup.rotation.z = this.yokeYaw
     this.yokeGroup.rotation.x = this.yokePitch

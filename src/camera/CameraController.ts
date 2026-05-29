@@ -5,18 +5,15 @@ import { ROOM } from '../render/CockpitRoom.js'
 
 export type CameraMode = 'walking' | 'piloting'
 
-// 1st-person pilot eye in shipGroup local space
 const PILOT_EYE = new Vector3(0, 0.08, 0.10)
-
-// 3rd-person offsets from character position (ship local)
-const WALK_UP   = 1.5   // camera above char center
-const WALK_BACK = 3.5   // camera behind char
+const WALK_UP   = 1.5
+const WALK_BACK = 3.2
 
 export class CameraController {
   mode: CameraMode = 'walking'
 
-  private readonly _lookTarget = new Vector3()
-  private readonly _lookWorld  = new Vector3()
+  private camYaw = Math.PI          // smoothly follows character facing
+  private readonly _lookWorld = new Vector3()
 
   constructor(
     private readonly camera: PerspectiveCamera,
@@ -26,29 +23,43 @@ export class CameraController {
   update(character: CharacterController): void {
     if (this.mode === 'piloting') {
       this.camera.position.copy(PILOT_EYE)
-      // Zero out any rotation CameraController may have set previously
-      // so the camera just looks along -Z of the shipGroup (forward).
       this.camera.rotation.set(0, 0, 0)
       return
     }
 
-    // ── WALKING: 3rd-person follow ─────────────────────────────────────
     const p = character.position
 
-    // Camera sits behind+above the character (in ship local space)
-    const camZ = Math.min(p.z + WALK_BACK, ROOM.backZ - 0.5)
-    this.camera.position.set(p.x * 0.6, p.y + WALK_UP, camZ)
+    // Smooth yaw follow with wrap-around handling
+    let dyaw = character.facingYaw - this.camYaw
+    while (dyaw >  Math.PI) dyaw -= 2 * Math.PI
+    while (dyaw < -Math.PI) dyaw += 2 * Math.PI
+    this.camYaw += dyaw * 0.12
 
-    // Look at upper-torso in world space
-    this._lookTarget.set(p.x, p.y + 0.28, p.z)
-    this.shipGroup.localToWorld(this._lookTarget.clone().copy(this._lookTarget))
-    // Use world position:
-    this._lookWorld.copy(this._lookTarget)
+    // Behind direction = (-sin(yaw), 0, -cos(yaw))
+    // Facing direction = (sin(yaw), 0, cos(yaw)), at yaw=π → (0,0,-1) = toward helm
+    const bx = -Math.sin(this.camYaw)
+    const bz = -Math.cos(this.camYaw)
+
+    const rawX = p.x + bx * WALK_BACK
+    const rawZ = p.z + bz * WALK_BACK
+
+    const camX = Math.max(ROOM.leftX  + 0.5, Math.min(ROOM.rightX - 0.5, rawX))
+    const camZ = Math.max(ROOM.frontZ + 0.5, Math.min(ROOM.backZ   - 0.5, rawZ))
+
+    this.camera.position.set(camX, p.y + WALK_UP, camZ)
+
+    // Look at character's upper torso in world space
+    this._lookWorld.set(p.x, p.y + 0.25, p.z)
     this.shipGroup.localToWorld(this._lookWorld)
     this.camera.lookAt(this._lookWorld)
   }
 
   setMode(mode: CameraMode): void {
     this.mode = mode
+  }
+
+  /** Snap camYaw immediately (call when switching from piloting to walking) */
+  setWalkYaw(yaw: number): void {
+    this.camYaw = yaw
   }
 }
