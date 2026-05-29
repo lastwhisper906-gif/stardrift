@@ -6,13 +6,14 @@ import {
   MeshStandardMaterial,
   Vector3,
 } from 'three'
-import { ROOM, HELM_SEAT_Z } from '../render/CockpitRoom.js'
+import { ROOM, HELM_SEAT_Z, COLLISION_BOXES } from '../render/CockpitRoom.js'
 
-export const CHAR_HEIGHT  = 1.58
-export const CHAR_SPEED   = 2.6   // m/s
-// Character group y=0 is mid-body; feet are CHAR_HEIGHT/2 below, head above
-export const CHAR_FOOT_Y  = ROOM.floorY
-export const CHAR_CENTER_Y = CHAR_FOOT_Y + CHAR_HEIGHT / 2  // ≈ -0.31
+export const CHAR_HEIGHT   = 1.58
+export const CHAR_SPEED    = 4.0   // m/s
+export const CHAR_FOOT_Y   = ROOM.floorY
+export const CHAR_CENTER_Y = CHAR_FOOT_Y + CHAR_HEIGHT / 2
+
+const CHAR_RADIUS = 0.38
 
 export class CharacterController {
   readonly mesh: Group
@@ -20,7 +21,7 @@ export class CharacterController {
   readonly position: Vector3
 
   constructor() {
-    this.position = new Vector3(0, CHAR_CENTER_Y, 1.5)
+    this.position = new Vector3(0, CHAR_CENTER_Y, 8.0)  // start mid-room
     this.mesh = this.buildMesh()
     this.mesh.position.copy(this.position)
     this.mesh.rotation.y = Math.PI  // start facing helm (-Z)
@@ -81,19 +82,39 @@ export class CharacterController {
     return g
   }
 
-  /** Called every frame in WALKING mode. raw.yaw = A/D, raw.pitch = W/S */
-  move(yaw: number, pitch: number, dt: number): void {
-    const dx =  yaw   * CHAR_SPEED * dt
-    const dz =  pitch * CHAR_SPEED * dt
+  /** Called every frame in WALKING mode. fwd = W/S axis, right = A/D axis */
+  move(fwd: number, right: number, dt: number): void {
+    const dx =  right * CHAR_SPEED * dt
+    const dz = -fwd   * CHAR_SPEED * dt  // W presses toward -Z (helm)
 
-    this.position.x = Math.max(ROOM.leftX  + 0.28, Math.min(ROOM.rightX - 0.28, this.position.x + dx))
-    this.position.z = Math.max(-0.65, Math.min(ROOM.backZ - 0.35, this.position.z + dz))
+    this.position.x += dx
+    this.position.z += dz
+    this.resolveCollisions()
     this.mesh.position.copy(this.position)
 
-    // Turn to face direction of movement
     if (Math.abs(dx) > 0.0005 || Math.abs(dz) > 0.0005) {
       this.mesh.rotation.y = Math.atan2(dx, dz)
     }
+  }
+
+  private resolveCollisions(): void {
+    const r = CHAR_RADIUS
+    for (const box of COLLISION_BOXES) {
+      const cx = Math.max(box.minX, Math.min(this.position.x, box.maxX))
+      const cz = Math.max(box.minZ, Math.min(this.position.z, box.maxZ))
+      const dx = this.position.x - cx
+      const dz = this.position.z - cz
+      const dist2 = dx * dx + dz * dz
+      if (dist2 < r * r) {
+        const dist = Math.sqrt(dist2)
+        if (dist < 0.001) { this.position.z += r; continue }
+        this.position.x += (dx / dist) * (r - dist)
+        this.position.z += (dz / dist) * (r - dist)
+      }
+    }
+    // room wall clamp
+    this.position.x = Math.max(ROOM.leftX  + r, Math.min(ROOM.rightX - r, this.position.x))
+    this.position.z = Math.max(ROOM.frontZ + r, Math.min(ROOM.backZ   - r, this.position.z))
   }
 
   /** Snap character to helm seat when entering PILOTING mode. */
@@ -104,6 +125,6 @@ export class CharacterController {
   }
 
   isNearHelm(): boolean {
-    return this.position.z < 0.95 && Math.abs(this.position.x) < 0.85
+    return this.position.z < 1.8 && Math.abs(this.position.x) < 1.2
   }
 }

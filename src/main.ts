@@ -63,19 +63,16 @@ function loop(): void {
   const dt = Math.min((now - lastTime) / 1000, 0.05)
   lastTime = now
 
-  const raw = keyboard.getRawInput()
   const mode = camCtrl.mode
 
   // ── F key: toggle WALKING ↔ PILOTING ────────────────────────────────────
   if (keyboard.consumeJustPressed('KeyF')) {
     if (mode === 'walking' && character.isNearHelm()) {
-      // Sit down
       camCtrl.setMode('piloting')
       character.mesh.visible = false
       scene.cockpit.setArmsVisible(true)
       hud.setInteractPrompt(false)
     } else if (mode === 'piloting') {
-      // Stand up
       character.placeAtHelm()
       camCtrl.setMode('walking')
       character.mesh.visible = true
@@ -85,14 +82,15 @@ function loop(): void {
 
   // ── Input dispatch ───────────────────────────────────────────────────────
   if (mode === 'piloting') {
-    // Ship control via Station handlers
+    const pilotInput = keyboard.getPilotInput()
     const state = room.getState()
-    const next = router.dispatch('player1', raw, state, dt)
+    const next = router.dispatch('player1', pilotInput, state, dt)
     const physShip = updatePhysics(next.ship, dt)
     room.setState({ ship: physShip, tick: state.tick + 1 })
+    scene.cockpit.update(pilotInput, physShip, dt)
   } else {
-    // Character movement; ship drifts (physics still runs with zero input)
-    character.move(raw.yaw, raw.pitch, dt)
+    const axes = keyboard.getWalkAxes()
+    character.move(axes.fwd, axes.right, dt)
     const state = room.getState()
     const physShip = updatePhysics(state.ship, dt)
     room.setState({ ship: physShip, tick: state.tick + 1 })
@@ -124,11 +122,6 @@ function loop(): void {
 
   // ── Camera update ────────────────────────────────────────────────────────
   camCtrl.update(character)
-
-  // ── Cockpit animation (only useful in PILOTING) ──────────────────────────
-  if (mode === 'piloting') {
-    scene.cockpit.update(raw, ship, dt)
-  }
 
   // ── HUD ──────────────────────────────────────────────────────────────────
   const nearHelm = mode === 'walking' && character.isNearHelm()

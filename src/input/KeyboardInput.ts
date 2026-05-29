@@ -14,14 +14,24 @@ export class KeyboardInput {
     })
   }
 
-  getRawInput(): RawInput {
+  /** PILOTING mode: W/S = throttle, A/D = yaw, Q/E = roll, R/F = pitch */
+  getPilotInput(): RawInput {
     const k = this.keys
     return {
-      yaw:          (k['KeyA'] || k['ArrowLeft']  ? -1 : 0) + (k['KeyD'] || k['ArrowRight'] ? 1 : 0),
-      pitch:        (k['KeyW'] || k['ArrowUp']    ? -1 : 0) + (k['KeyS'] || k['ArrowDown']  ? 1 : 0),
-      roll:         (k['KeyQ'] ? -1 : 0) + (k['KeyE'] ? 1 : 0),
-      throttleDelta:(k['ShiftLeft'] || k['ShiftRight'] ? 1 : 0) + (k['Space'] ? -1 : 0),
-      verticalDelta:(k['KeyR'] ? 1 : 0) + (k['KeyF'] ? -1 : 0),
+      yaw:           (k['KeyA'] || k['ArrowLeft']  ? -1 : 0) + (k['KeyD'] || k['ArrowRight'] ? 1 : 0),
+      pitch:         (k['KeyR'] ? -1 : 0) + (k['KeyF'] ? 1 : 0),
+      roll:          (k['KeyQ'] ? -1 : 0) + (k['KeyE'] ? 1 : 0),
+      throttleDelta: (k['KeyW'] || k['ArrowUp']    ? 1  : 0) + (k['KeyS'] || k['ArrowDown']  ? -1 : 0),
+      verticalDelta: 0,
+    }
+  }
+
+  /** WALKING mode: W/S = forward/back, A/D = strafe left/right */
+  getWalkAxes(): { fwd: number; right: number } {
+    const k = this.keys
+    return {
+      fwd:   (k['KeyW'] || k['ArrowUp']    ? 1 : 0) + (k['KeyS'] || k['ArrowDown']  ? -1 : 0),
+      right: (k['KeyD'] || k['ArrowRight'] ? 1 : 0) + (k['KeyA'] || k['ArrowLeft']  ? -1 : 0),
     }
   }
 
