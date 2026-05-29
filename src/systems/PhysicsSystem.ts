@@ -3,6 +3,8 @@ import type { ShipState } from '../state/GameState.js'
 const DRAG = 0.92
 const ANGULAR_DRAG = 0.85
 const FORWARD_ACCEL = 4
+const O2_IDLE_DRAIN  = 0.04   // %/s always
+const O2_FLIGHT_DRAIN = 0.18  // %/s extra when engines running
 
 export function updatePhysics(ship: ShipState, dt: number): ShipState {
   const [rx, ry, rz] = ship.rotation
@@ -35,10 +37,14 @@ export function updatePhysics(ship: ShipState, dt: number): ShipState {
     avz * ANGULAR_DRAG,
   ]
 
+  const o2Drain = (O2_IDLE_DRAIN + (ship.throttle > 0.05 ? O2_FLIGHT_DRAIN : 0)) * dt
+  const nextO2 = Math.max(0, ship.oxygen - o2Drain)
+
   return {
     ...ship,
-    velocity: nextVel,
-    position: nextPos,
+    velocity:        nextVel,
+    position:        nextPos,
     angularVelocity: nextAV,
+    oxygen:          nextO2,
   }
 }

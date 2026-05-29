@@ -53,11 +53,34 @@ eventManager.register(alienEvent)
 
 // ── HUD ───────────────────────────────────────────────────────────────────────
 const hud = new HUD()
-hud.setInteractPrompt(false)  // shown when near helm in WALKING mode
+hud.setInteractPrompt(false)
 
-// ── Timers ────────────────────────────────────────────────────────────────────
+// ── Timers / game state ───────────────────────────────────────────────────────
 let pilotingTimer = 0
 let nextTriggerDelay = 20
+let gameOver = false
+
+function resetGame(): void {
+  room.setState({
+    ship: {
+      position: [0, 0, 0], rotation: [0, 0, 0],
+      velocity: [0, 0, 0], angularVelocity: [0, 0, 0],
+      throttle: 0, oxygen: 100, hull: 100,
+    },
+    phase: 'PILOTING',
+    tick: 0,
+  })
+  character.placeAtHelm()
+  camCtrl.setMode('walking')
+  camCtrl.setWalkYaw(Math.PI)
+  scene.shipExterior.group.visible = false
+  character.mesh.visible = true
+  scene.cockpit.setArmsVisible(false)
+  pilotingTimer    = 0
+  nextTriggerDelay = 20
+  gameOver         = false
+  hud.hideEndScreen()
+}
 
 let lastTime = performance.now()
 
@@ -123,6 +146,15 @@ function loop(): void {
     }
     hud.setRepairPrompt(nearRepair && room.getState().ship.hull < 100, room.getState().ship.hull)
 
+    // ── O2 station interaction (right secondary station) ──────────────────
+    const o2dx  = character.position.x - 3.65
+    const o2dz  = character.position.z - 3.25
+    const nearO2 = Math.sqrt(o2dx * o2dx + o2dz * o2dz) < 2.5
+    if (nearO2 && keyboard.isHeld('KeyE') && room.getState().ship.oxygen < 100) {
+      const st = room.getState()
+      room.setState({ ship: { ...st.ship, oxygen: Math.min(100, st.ship.oxygen + 8 * dt) } })
+    }
+
     // Entrance door animation
     cockpitRoom.update(character.position.z, dt)
 
@@ -183,6 +215,28 @@ function loop(): void {
   } else {
     hud.setAlienWarning(false)
   }
+
+  // ── Mode indicator ────────────────────────────────────────────────────────
+  hud.setMode(mode === 'exterior' ? 'EXT VIEW' : mode)
+
+  // ── Win / lose detection ──────────────────────────────────────────────────
+  if (!gameOver) {
+    const [px, py, pz] = ship.position
+    const distFromOrigin = Math.sqrt(px * px + py * py + pz * pz)
+    if (ship.hull <= 0) {
+      gameOver = true
+      hud.showEndScreen('destroyed', distFromOrigin)
+    } else if (ship.oxygen <= 0) {
+      gameOver = true
+      hud.showEndScreen('oxygen', distFromOrigin)
+    } else if (distFromOrigin >= 5000) {
+      gameOver = true
+      hud.showEndScreen('win', distFromOrigin)
+    }
+  }
+
+  // Restart
+  if (gameOver && keyboard.consumeJustPressed('KeyR')) resetGame()
 
   scene.render()
   requestAnimationFrame(loop)

@@ -31,6 +31,8 @@ export class HUD {
   private alienPanel!: HTMLElement
   private alienDistEl!: HTMLElement
   private alienHpEl!: HTMLElement
+  private gameOverlay!: HTMLElement
+  private modeIndicator!: HTMLElement
   private prevHull = 100
 
   constructor() {
@@ -121,6 +123,26 @@ export class HUD {
     `
     this.root.appendChild(alienPanel)
 
+    // ── Mode indicator (bottom-right) ─────────────────────────────────────
+    const modeIndicator = document.createElement('div')
+    modeIndicator.style.cssText = `
+      position:absolute;bottom:10px;right:14px;
+      color:#334455;font-size:11px;letter-spacing:1px;
+    `
+    modeIndicator.textContent = 'WALKING'
+    this.root.appendChild(modeIndicator)
+
+    // ── Game-over / win full-screen overlay ────────────────────────────────
+    const gameOverlay = document.createElement('div')
+    gameOverlay.style.cssText = `
+      position:fixed;top:0;left:0;width:100%;height:100%;
+      display:none;flex-direction:column;align-items:center;justify-content:center;
+      background:rgba(0,0,0,0.72);
+      font-family:'Courier New',monospace;
+      pointer-events:auto;
+    `
+    this.root.appendChild(gameOverlay)
+
     // ── Damage vignette overlay ───────────────────────────────────────────
     const dmg = document.createElement('div')
     dmg.style.cssText = `
@@ -146,7 +168,9 @@ export class HUD {
     this.alienPanel     = alienPanel
     this.alienDistEl    = document.getElementById('hud-alien-dist')!
     this.alienHpEl      = document.getElementById('hud-alien-hp')!
-    this.damageOverlay = dmg
+    this.gameOverlay    = gameOverlay
+    this.modeIndicator  = modeIndicator
+    this.damageOverlay  = dmg
   }
 
   update(ship: ShipState, phase: GamePhase, asteroidDist?: number): void {
@@ -197,6 +221,29 @@ export class HUD {
         ? `HOLD [E] TO REPAIR — HULL ${Math.round(hull)}%`
         : 'HULL INTACT'
     }
+  }
+
+  setMode(mode: string): void {
+    this.modeIndicator.textContent = mode.toUpperCase()
+  }
+
+  showEndScreen(type: 'destroyed' | 'oxygen' | 'win', distM: number): void {
+    this.gameOverlay.style.display = 'flex'
+    const isWin = type === 'win'
+    const title  = isWin ? '✦ DESTINATION REACHED ✦' : type === 'oxygen' ? '— CREW LOST —' : '— SHIP DESTROYED —'
+    const color  = isWin ? '#00ff88' : '#ff4444'
+    const sub    = isWin
+      ? `${Math.round(distM / 1000)} km traveled — Mission Complete`
+      : 'Press  [R]  to restart'
+    this.gameOverlay.innerHTML = `
+      <div style="color:${color};font-size:36px;letter-spacing:6px;text-shadow:0 0 20px ${color};margin-bottom:20px">${title}</div>
+      <div style="color:#aabbcc;font-size:16px;letter-spacing:3px">${sub}</div>
+      ${isWin ? '' : '<div style="color:#556677;font-size:12px;margin-top:12px;letter-spacing:2px">Distance: ' + Math.round(distM) + ' m</div>'}
+    `
+  }
+
+  hideEndScreen(): void {
+    this.gameOverlay.style.display = 'none'
   }
 
   setAlienWarning(show: boolean, dist?: number, health?: number): void {
