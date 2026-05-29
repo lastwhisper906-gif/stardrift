@@ -6,11 +6,15 @@ import { ROOM } from '../render/CockpitRoom.js'
 export type CameraMode = 'walking' | 'piloting' | 'exterior'
 
 const PILOT_EYE  = new Vector3(0, 0.08, 0.10)
-// exterior camera in ship-local space (behind & above the ship)
 const EXT_POS    = new Vector3(0, 14, 38)
 const EXT_TARGET = new Vector3(0, 2, 8)
 const WALK_UP    = 1.5
-const WALK_BACK  = 3.2
+const WALK_BACK  = 2.8
+
+// How fast camera yaw tracks character facing (lower = less dizzy)
+const YAW_FOLLOW  = 0.035
+// How fast camera position smooths toward target (lower = smoother but more lag)
+const POS_SMOOTH  = 3.5
 
 export class CameraController {
   mode: CameraMode = 'walking'
@@ -19,6 +23,11 @@ export class CameraController {
   private shakeAmt = 0
   private shakeX   = 0
   private shakeY   = 0
+
+  // Smoothed camera position — avoids instant jumps on mode switch
+  private readonly smoothPos = new Vector3(0, WALK_UP, WALK_BACK)
+  private posReady = false          // false = re-init from current camera on next frame
+
   private readonly _lookWorld = new Vector3()
 
   constructor(
@@ -31,7 +40,7 @@ export class CameraController {
   }
 
   update(character: CharacterController, dt = 0.016): void {
-    // Decay shake
+    // ── Shake decay ───────────────────────────────────────────────────────
     if (this.shakeAmt > 0) {
       this.shakeAmt = Math.max(0, this.shakeAmt - dt * 5)
       this.shakeX   = (Math.random() * 2 - 1) * this.shakeAmt * 0.05
@@ -40,58 +49,80 @@ export class CameraController {
       this.shakeX = this.shakeY = 0
     }
 
+    // ── Exterior view ─────────────────────────────────────────────────────
     if (this.mode === 'exterior') {
       this.camera.position.copy(EXT_POS)
       this._lookWorld.copy(EXT_TARGET)
       this.shipGroup.localToWorld(this._lookWorld)
       this.camera.lookAt(this._lookWorld)
+      this.posReady = false
       return
     }
 
+    // ── Piloting (1st-person) ─────────────────────────────────────────────
     if (this.mode === 'piloting') {
       this.camera.position.set(
-        PILOT_EYE.x + this.shakeX, PILOT_EYE.y + this.shakeY, PILOT_EYE.z,
+        PILOT_EYE.x + this.shakeX,
+        PILOT_EYE.y + this.shakeY,
+        PILOT_EYE.z,
       )
       this.camera.rotation.set(0, 0, 0)
+      this.posReady = false   // reset so next walking entry starts a smooth transition
       return
     }
 
+    // ── Walking (3rd-person behind character) ─────────────────────────────
     const p = character.position
 
-    // Smooth yaw follow with wrap-around handling
+    // Slowly follow character's facing direction (low factor = less dizzy)
     let dyaw = character.facingYaw - this.camYaw
     while (dyaw >  Math.PI) dyaw -= 2 * Math.PI
     while (dyaw < -Math.PI) dyaw += 2 * Math.PI
-    this.camYaw += dyaw * 0.12
+    this.camYaw += dyaw * (YAW_FOLLOW * Math.min(1, dt / 0.016))
 
-    // Behind direction = (-sin(yaw), 0, -cos(yaw))
-    // Facing direction = (sin(yaw), 0, cos(yaw)), at yaw=π → (0,0,-1) = toward helm
+    // Compute where the camera wants to be (behind + above character)
     const bx = -Math.sin(this.camYaw)
     const bz = -Math.cos(this.camYaw)
 
     const rawX = p.x + bx * WALK_BACK
     const rawZ = p.z + bz * WALK_BACK
+    const tgtX = Math.max(ROOM.leftX  + 0.5, Math.min(ROOM.rightX - 0.5, rawX))
+    const tgtZ = Math.max(ROOM.frontZ + 0.5, Math.min(ROOM.backZ   - 0.5, rawZ))
+    const tgtY = p.y + WALK_UP  // Y also smoothed to absorb jumps/bobs
 
-    const camX = Math.max(ROOM.leftX  + 0.5, Math.min(ROOM.rightX - 0.5, rawX))
-    const camZ = Math.max(ROOM.frontZ + 0.5, Math.min(ROOM.backZ   - 0.5, rawZ))
+    // First frame after entering walking mode: seed smoothPos from current position
+    // so the camera glides from the pilot eye to behind the character (no hard cut)
+    if (!this.posReady) {
+      this.smoothPos.copy(this.camera.position)
+      this.posReady = true
+    }
 
-    this.camera.position.set(camX, p.y + WALK_UP, camZ)
+    // Smoothly move toward target (lerp factor capped so it can't overshoot)
+    const lerpT = Math.min(1, POS_SMOOTH * dt)
+    this.smoothPos.x += (tgtX - this.smoothPos.x) * lerpT
+    this.smoothPos.y += (tgtY - this.smoothPos.y) * lerpT
+    this.smoothPos.z += (tgtZ - this.smoothPos.z) * lerpT
 
-    // Look at character's upper torso in world space
+    this.camera.position.copy(this.smoothPos)
+
+    // Look at character's upper torso (world space)
     this._lookWorld.set(p.x, p.y + 0.25, p.z)
     this.shipGroup.localToWorld(this._lookWorld)
     this.camera.lookAt(this._lookWorld)
   }
 
   setMode(mode: CameraMode): void {
+    if (mode === 'walking') {
+      // Signal to re-seed smoothPos on the next update() call so the camera
+      // starts its smooth glide from wherever it currently is (pilot eye, ext, …)
+      this.posReady = false
+    }
     this.mode = mode
   }
 
-  /** Snap camYaw immediately (call when switching from piloting to walking) */
-  setWalkYaw(yaw: number): void {
-    this.camYaw = yaw
-  }
+  /** Snap camYaw immediately — prevents a sudden rotation when standing up */
+  setWalkYaw(yaw: number): void { this.camYaw = yaw }
 
-  /** Current smoothed camera yaw — used by CharacterController for relative movement */
+  /** Exposed for character-relative movement in main.ts */
   getCamYaw(): number { return this.camYaw }
 }
