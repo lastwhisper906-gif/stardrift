@@ -38,7 +38,10 @@ export class HUD {
   private missionDist!: HTMLElement
   private o2Prompt!: HTMLElement
   private hitFlash!: HTMLElement
+  private titleScreen!: HTMLElement
+  private combatPrompt!: HTMLElement
   private prevHull = 100
+  private _titleDismissed = false
 
   constructor() {
     this.root = document.createElement('div')
@@ -127,6 +130,43 @@ export class HUD {
       <div id="hud-alien-hp" style="color:#88ffaa;font-size:11px">HULL: ████</div>
     `
     this.root.appendChild(alienPanel)
+
+    // ── Title / start screen ────────────────────────────────────────────────
+    const titleScreen = document.createElement('div')
+    titleScreen.style.cssText = `
+      position:fixed;top:0;left:0;width:100%;height:100%;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      background:rgba(0,0,8,0.95);
+      font-family:'Courier New',monospace;
+      pointer-events:auto;z-index:100;
+    `
+    titleScreen.innerHTML = `
+      <div style="color:#00ff88;font-size:52px;font-weight:bold;letter-spacing:10px;text-shadow:0 0 30px #00ff88,0 0 60px #00aa55;margin-bottom:10px">STARDRIFT</div>
+      <div style="color:#4488aa;font-size:14px;letter-spacing:5px;margin-bottom:36px">DEEP SPACE SURVIVAL MISSION</div>
+      <div style="color:#2a3a4a;background:rgba(0,10,20,0.7);border:1px solid rgba(0,100,150,0.2);padding:18px 32px;border-radius:4px;font-size:11px;line-height:2.0;text-align:left;max-width:540px;margin-bottom:30px">
+        <span style="color:#4488aa;letter-spacing:2px">WALKING MODE</span>&nbsp;&nbsp;WASD move • Shift run • Space jump • C crouch<br>
+        <span style="color:#4488aa;letter-spacing:2px">PILOTING    </span>&nbsp;&nbsp;W/S throttle • A/D yaw • R/F pitch • Q/E roll • Z/X vertical<br>
+        <span style="color:#4488aa;letter-spacing:2px">INTERACT    </span>&nbsp;&nbsp;F sit/stand • Tab exterior view<br>
+        <span style="color:#00ff88;letter-spacing:2px">STATIONS    </span>&nbsp;&nbsp;🟩 REPAIR (left) • 🟦 O₂ (right) — hold E to use<br>
+        <span style="color:#ff8844;letter-spacing:2px">EVENTS      </span>&nbsp;&nbsp;ASTEROID: steer away • ALIEN: press Space to fire
+      </div>
+      <div style="color:#00aaff;font-size:13px;letter-spacing:4px;animation:pulse 1.5s ease-in-out infinite">PRESS ANY KEY TO BEGIN</div>
+      <style>@keyframes pulse{0%,100%{opacity:0.5}50%{opacity:1}}</style>
+    `
+    this.root.appendChild(titleScreen)
+
+    // ── Combat prompt (Space to fire) ─────────────────────────────────────
+    const combatPrompt = document.createElement('div')
+    combatPrompt.style.cssText = `
+      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      text-align:center;display:none;
+      pointer-events:none;
+    `
+    combatPrompt.innerHTML = `
+      <div style="color:#ff4444;font-size:13px;letter-spacing:3px;text-shadow:0 0 10px #ff4444;animation:pulse 0.8s infinite">⚠ ALIEN IN RANGE — PRESS [SPACE] TO FIRE ⚠</div>
+      <style>@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}</style>
+    `
+    this.root.appendChild(combatPrompt)
 
     // ── Mission progress (bottom-left) ───────────────────────────────────
     const missionPanel = document.createElement('div')
@@ -217,6 +257,8 @@ export class HUD {
     this.missionDist    = document.getElementById('hud-miss-dist')!
     this.o2Prompt       = o2Prompt
     this.hitFlash       = hitFlash
+    this.titleScreen    = titleScreen
+    this.combatPrompt   = combatPrompt
     this.damageOverlay  = dmg
   }
 
@@ -278,6 +320,17 @@ export class HUD {
 
   setO2Prompt(show: boolean): void {
     this.o2Prompt.style.display = show ? 'block' : 'none'
+  }
+
+  isTitleDismissed(): boolean { return this._titleDismissed }
+
+  dismissTitle(): void {
+    this._titleDismissed = true
+    this.titleScreen.style.display = 'none'
+  }
+
+  setCombatPrompt(show: boolean): void {
+    this.combatPrompt.style.display = show ? 'block' : 'none'
   }
 
   flashHit(): void {

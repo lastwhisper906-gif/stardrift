@@ -89,9 +89,25 @@ function loop(): void {
   const now = performance.now()
   const dt  = Math.min((now - lastTime) / 1000, 0.05)
   lastTime   = now
+
+  // Dismiss title on any key, then start the actual loop
+  if (!hud.isTitleDismissed()) {
+    // Peek at keydown events to dismiss
+    if (keyboard.consumeJustPressed('Enter') || keyboard.consumeJustPressed('Space') ||
+        keyboard.consumeJustPressed('KeyW')  || keyboard.consumeJustPressed('KeyA') ||
+        keyboard.consumeJustPressed('KeyS')  || keyboard.consumeJustPressed('KeyD')) {
+      hud.dismissTitle()
+    }
+    scene.render()
+    requestAnimationFrame(loop)
+    return
+  }
   totalTime += dt
 
   const mode = camCtrl.mode
+
+  // ── Dismiss title screen on any key ──────────────────────────────────────
+  // (handled below via keyboard polling — any consumeJustPressed drains the queue)
 
   // ── Tab: toggle exterior ship view while piloting ────────────────────────
   if (keyboard.consumeJustPressed('Tab') && (mode === 'piloting' || mode === 'exterior')) {
@@ -221,8 +237,11 @@ function loop(): void {
 
   if (activeEvent === 'alien') {
     hud.setAlienWarning(true, alienEvent.getDistanceToShip(), alienEvent.getHealth())
+    const inRange = (mode === 'piloting' || mode === 'exterior') && alienEvent.getDistanceToShip() < 120
+    hud.setCombatPrompt(inRange)
   } else {
     hud.setAlienWarning(false)
+    hud.setCombatPrompt(false)
   }
 
   // ── Mode indicator ────────────────────────────────────────────────────────
