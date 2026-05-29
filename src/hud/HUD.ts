@@ -33,6 +33,11 @@ export class HUD {
   private alienHpEl!: HTMLElement
   private gameOverlay!: HTMLElement
   private modeIndicator!: HTMLElement
+  private missionPanel!: HTMLElement
+  private missionFill!: HTMLElement
+  private missionDist!: HTMLElement
+  private o2Prompt!: HTMLElement
+  private hitFlash!: HTMLElement
   private prevHull = 100
 
   constructor() {
@@ -123,6 +128,43 @@ export class HUD {
     `
     this.root.appendChild(alienPanel)
 
+    // ── Mission progress (bottom-left) ───────────────────────────────────
+    const missionPanel = document.createElement('div')
+    missionPanel.style.cssText = PANEL_BASE + 'bottom:14px;left:14px;min-width:180px;'
+    missionPanel.innerHTML = `
+      <div style="margin-bottom:3px;font-size:10px;color:#4488aa;letter-spacing:2px">MISSION PROGRESS</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="display:inline-block;width:100px;height:6px;background:#001a0a;border:1px solid rgba(255,255,255,0.12);border-radius:2px">
+          <span id="hud-miss-fill" style="display:block;height:100%;width:0%;background:#00ff88;border-radius:2px;transition:width 0.3s"></span>
+        </span>
+        <span id="hud-miss-dist" style="color:#88ffcc;font-size:11px">0.0 km</span>
+      </div>
+    `
+    this.root.appendChild(missionPanel)
+
+    // ── O2 station prompt ─────────────────────────────────────────────────
+    const o2Prompt = document.createElement('div')
+    o2Prompt.style.cssText = `
+      position:absolute;bottom:108px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(0,10,30,0.65);
+      border:1px solid rgba(0,120,255,0.35);
+      padding:6px 18px;border-radius:3px;
+      color:#0088ff;font-size:13px;letter-spacing:2px;
+      text-shadow:0 0 8px #0088ff;
+    `
+    o2Prompt.textContent = 'HOLD [E] TO REFILL O₂'
+    this.root.appendChild(o2Prompt)
+
+    // ── Hit flash (green success flash) ───────────────────────────────────
+    const hitFlash = document.createElement('div')
+    hitFlash.style.cssText = `
+      position:fixed;top:0;left:0;width:100%;height:100%;
+      background:radial-gradient(ellipse at center,transparent 40%,rgba(0,200,100,0.45) 100%);
+      pointer-events:none;opacity:0;
+    `
+    this.root.appendChild(hitFlash)
+
     // ── Mode indicator (bottom-right) ─────────────────────────────────────
     const modeIndicator = document.createElement('div')
     modeIndicator.style.cssText = `
@@ -170,6 +212,11 @@ export class HUD {
     this.alienHpEl      = document.getElementById('hud-alien-hp')!
     this.gameOverlay    = gameOverlay
     this.modeIndicator  = modeIndicator
+    this.missionPanel   = missionPanel
+    this.missionFill    = document.getElementById('hud-miss-fill')!
+    this.missionDist    = document.getElementById('hud-miss-dist')!
+    this.o2Prompt       = o2Prompt
+    this.hitFlash       = hitFlash
     this.damageOverlay  = dmg
   }
 
@@ -221,6 +268,25 @@ export class HUD {
         ? `HOLD [E] TO REPAIR — HULL ${Math.round(hull)}%`
         : 'HULL INTACT'
     }
+  }
+
+  setMissionProgress(distM: number, goalM = 5000): void {
+    const pct = Math.min(100, (distM / goalM) * 100)
+    this.missionFill.style.width = `${pct}%`
+    this.missionDist.textContent = `${(distM / 1000).toFixed(2)} km`
+  }
+
+  setO2Prompt(show: boolean): void {
+    this.o2Prompt.style.display = show ? 'block' : 'none'
+  }
+
+  flashHit(): void {
+    this.hitFlash.style.transition = 'none'
+    this.hitFlash.style.opacity = '1'
+    requestAnimationFrame(() => {
+      this.hitFlash.style.transition = 'opacity 0.4s ease-out'
+      this.hitFlash.style.opacity = '0'
+    })
   }
 
   setMode(mode: string): void {

@@ -23,6 +23,7 @@ export class SceneManager {
   readonly shipGroup: Group
   readonly cockpit: CockpitInterior
   readonly shipExterior: ShipExterior
+  readonly muzzleLight: PointLight
 
   constructor() {
     this.scene = new Scene()
@@ -65,6 +66,11 @@ export class SceneManager {
     // Ship exterior hull (visible only in exterior camera mode)
     this.shipExterior = new ShipExterior()
     this.shipGroup.add(this.shipExterior.group)
+
+    // Muzzle flash light (nose of ship, very brief intense burst when firing)
+    this.muzzleLight = new PointLight(0x00ffaa, 0, 30)
+    this.muzzleLight.position.set(0, 2, -8)
+    this.shipGroup.add(this.muzzleLight)
 
     this.scene.add(this.shipGroup)
 

@@ -149,13 +149,14 @@ function loop(): void {
     hud.setRepairPrompt(nearRepair && room.getState().ship.hull < 100, room.getState().ship.hull)
 
     // ── O2 station interaction (right secondary station) ──────────────────
-    const o2dx  = character.position.x - 3.65
-    const o2dz  = character.position.z - 3.25
+    const o2dx   = character.position.x - 3.65
+    const o2dz   = character.position.z - 3.25
     const nearO2 = Math.sqrt(o2dx * o2dx + o2dz * o2dz) < 2.5
     if (nearO2 && keyboard.isHeld('KeyE') && room.getState().ship.oxygen < 100) {
       const st = room.getState()
       room.setState({ ship: { ...st.ship, oxygen: Math.min(100, st.ship.oxygen + 8 * dt) } })
     }
+    hud.setO2Prompt(nearO2 && room.getState().ship.oxygen < 100)
 
     // Entrance door animation
     cockpitRoom.update(character.position.z, dt, totalTime)
@@ -184,7 +185,14 @@ function loop(): void {
         -Math.sin(ry) * Math.cos(rx), Math.sin(rx), -Math.cos(ry) * Math.cos(rx),
       )
       const shipPos = new Vector3(...state.ship.position as [number, number, number])
-      alienEvent.shoot(shipPos, shipFwd)
+      const hit = alienEvent.shoot(shipPos, shipFwd)
+      // Muzzle flash
+      scene.muzzleLight.intensity = 6
+      if (hit) hud.flashHit()
+    }
+    // Decay muzzle flash
+    if (scene.muzzleLight.intensity > 0) {
+      scene.muzzleLight.intensity = Math.max(0, scene.muzzleLight.intensity - dt * 24)
     }
   } else {
     pilotingTimer = 0
@@ -196,9 +204,8 @@ function loop(): void {
 
   // ── Sync ship group (camera follows automatically) ───────────────────────
   const ship = room.getState().ship
-  const [px, py, pz] = ship.position
   const [rx, ry, rz] = ship.rotation
-  scene.shipGroup.position.set(px, py, pz)
+  scene.shipGroup.position.set(...ship.position as [number, number, number])
   scene.shipGroup.setRotationFromEuler(new Euler(rx, ry, rz, 'YXZ'))
 
   // ── Camera update ────────────────────────────────────────────────────────
@@ -221,10 +228,13 @@ function loop(): void {
   // ── Mode indicator ────────────────────────────────────────────────────────
   hud.setMode(mode === 'exterior' ? 'EXT VIEW' : mode)
 
+  // ── Mission progress ─────────────────────────────────────────────────────
+  const [px, py, pz] = ship.position
+  const distFromOrigin = Math.sqrt(px * px + py * py + pz * pz)
+  hud.setMissionProgress(distFromOrigin)
+
   // ── Win / lose detection ──────────────────────────────────────────────────
   if (!gameOver) {
-    const [px, py, pz] = ship.position
-    const distFromOrigin = Math.sqrt(px * px + py * py + pz * pz)
     if (ship.hull <= 0) {
       gameOver = true
       hud.showEndScreen('destroyed', distFromOrigin)
