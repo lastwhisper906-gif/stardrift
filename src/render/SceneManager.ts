@@ -10,6 +10,7 @@ import {
 import { createStarField } from './StarField.js'
 import { CockpitInterior } from './CockpitInterior.js'
 import { ShipExterior } from './ShipExterior.js'
+import { SpaceStation } from './SpaceStation.js'
 
 // Pilot eye position inside the cockpit (shipGroup local space)
 const EYE_X = 0
@@ -24,6 +25,7 @@ export class SceneManager {
   readonly cockpit: CockpitInterior
   readonly shipExterior: ShipExterior
   readonly muzzleLight: PointLight
+  readonly spaceStation: SpaceStation
 
   constructor() {
     this.scene = new Scene()
@@ -73,6 +75,10 @@ export class SceneManager {
     this.shipGroup.add(this.muzzleLight)
 
     this.scene.add(this.shipGroup)
+
+    // Space station (in world space, not shipGroup)
+    this.spaceStation = new SpaceStation()
+    this.scene.add(this.spaceStation.group)
 
     window.addEventListener('resize', this.onResize.bind(this))
   }

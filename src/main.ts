@@ -1,4 +1,6 @@
 import { Euler, Vector3 } from 'three'
+import { AudioSystem } from './audio/AudioSystem.js'
+import { SpaceStation } from './render/SpaceStation.js'
 import { SceneManager } from './render/SceneManager.js'
 import { CockpitRoom } from './render/CockpitRoom.js'
 import { LocalRoom } from './state/LocalRoom.js'
@@ -52,7 +54,8 @@ eventManager.register(asteroidEvent)
 eventManager.register(alienEvent)
 
 // ── HUD ───────────────────────────────────────────────────────────────────────
-const hud = new HUD()
+const hud   = new HUD()
+const audio = new AudioSystem()
 hud.setInteractPrompt(false)
 
 // ── Timers / game state ───────────────────────────────────────────────────────
@@ -84,6 +87,7 @@ function resetGame(): void {
 
 let lastTime  = performance.now()
 let totalTime = 0
+let prevHull  = 100
 
 function loop(): void {
   const now = performance.now()
@@ -97,6 +101,7 @@ function loop(): void {
         keyboard.consumeJustPressed('KeyW')  || keyboard.consumeJustPressed('KeyA') ||
         keyboard.consumeJustPressed('KeyS')  || keyboard.consumeJustPressed('KeyD')) {
       hud.dismissTitle()
+      audio.init()
     }
     scene.render()
     requestAnimationFrame(loop)
@@ -145,8 +150,10 @@ function loop(): void {
     const next = router.dispatch('player1', pilotInput, state, dt)
     const physShip = updatePhysics(next.ship, dt)
     room.setState({ ship: physShip, tick: state.tick + 1 })
+    audio.setThrottle(physShip.throttle)
     if (mode === 'piloting') scene.cockpit.update(pilotInput, physShip, dt)
   } else {
+    audio.setThrottle(0)
     // Character movement
     const axes = keyboard.getWalkAxes()
     if (keyboard.consumeJustPressed('Space')) character.jump()
@@ -202,9 +209,9 @@ function loop(): void {
       )
       const shipPos = new Vector3(...state.ship.position as [number, number, number])
       const hit = alienEvent.shoot(shipPos, shipFwd)
-      // Muzzle flash
       scene.muzzleLight.intensity = 6
-      if (hit) hud.flashHit()
+      audio.playShot()
+      if (hit) { hud.flashHit(); audio.playAlertBeep() }
     }
     // Decay muzzle flash
     if (scene.muzzleLight.intensity > 0) {
@@ -231,6 +238,10 @@ function loop(): void {
   const nearHelm = mode === 'walking' && character.isNearHelm()
   hud.setInteractPrompt(nearHelm)
 
+  // Impact audio when hull decreases
+  if (ship.hull < prevHull - 0.5) audio.playImpact()
+  prevHull = ship.hull
+
   const activeEvent = eventManager.getActiveEventId()
   const asteroidDist = activeEvent === 'asteroid' ? asteroidEvent.getDistanceToShip() : undefined
   hud.update(ship, room.getState().phase, asteroidDist)
@@ -247,10 +258,21 @@ function loop(): void {
   // ── Mode indicator ────────────────────────────────────────────────────────
   hud.setMode(mode === 'exterior' ? 'EXT VIEW' : mode)
 
-  // ── Mission progress ─────────────────────────────────────────────────────
+  // ── Mission progress + docking check ────────────────────────────────────
   const [px, py, pz] = ship.position
   const distFromOrigin = Math.sqrt(px * px + py * py + pz * pz)
   hud.setMissionProgress(distFromOrigin)
+
+  // Docking with space station
+  const [sx, sy, sz] = SpaceStation.POSITION
+  const distToStation = Math.sqrt((px-sx)**2 + (py-sy)**2 + (pz-sz)**2)
+  const shipSpeed     = Math.sqrt(ship.velocity[0]**2 + ship.velocity[1]**2 + ship.velocity[2]**2)
+  if (!gameOver && distToStation < 35 && shipSpeed < 6 && keyboard.consumeJustPressed('Space')) {
+    const st = room.getState()
+    room.setState({ ship: { ...st.ship, hull: 100, oxygen: 100 } })
+    audio.playDock()
+    hud.flashHit()
+  }
 
   // ── Win / lose detection ──────────────────────────────────────────────────
   if (!gameOver) {
