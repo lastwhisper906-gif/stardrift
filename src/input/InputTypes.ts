@@ -11,4 +11,5 @@ export interface RawInput {
 export interface StationInput {
   station: Station
   payload: RawInput
+  dt: number
 }

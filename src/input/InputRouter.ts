@@ -19,13 +19,13 @@ export class InputRouter {
     return this.mapping.get(playerId) ?? []
   }
 
-  dispatch(playerId: string, raw: RawInput, state: GameState): GameState {
+  dispatch(playerId: string, raw: RawInput, state: GameState, dt: number): GameState {
     const stations = this.mapping.get(playerId) ?? []
     let current = state
     for (const station of stations) {
       const handler = this.handlers.get(station)
       if (handler == null) continue
-      const input: StationInput = { station, payload: raw }
+      const input: StationInput = { station, payload: raw, dt }
       const patch = handler.handle(input, current)
       current = { ...current, ...patch }
     }

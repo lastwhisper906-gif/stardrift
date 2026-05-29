@@ -1,4 +1,4 @@
-import { Euler, Vector3 } from 'three'
+import { Euler } from 'three'
 import { SceneManager } from './render/SceneManager.js'
 import { LocalRoom } from './state/LocalRoom.js'
 import { InputRouter } from './input/InputRouter.js'
@@ -7,7 +7,7 @@ import { EventManager } from './events/EventManager.js'
 import { helmHandler } from './stations/HelmHandler.js'
 import { throttleHandler } from './stations/ThrottleHandler.js'
 import { verticalHandler } from './stations/VerticalHandler.js'
-import { Station, ALL_STATIONS } from './stations/Station.js'
+import { ALL_STATIONS } from './stations/Station.js'
 import { updatePhysics } from './systems/PhysicsSystem.js'
 
 const room = new LocalRoom()
@@ -31,23 +31,21 @@ function loop(): void {
 
   const raw = keyboard.getRawInput()
   const state = room.getState()
-  const next = router.dispatch('player1', raw, state)
+  const next = router.dispatch('player1', raw, state, dt)
 
   const physShip = updatePhysics(next.ship, dt)
   room.setState({ ship: physShip, tick: state.tick + 1 })
-
   eventManager.update(dt)
 
+  // Sync ship group position + rotation — camera follows automatically
   const ship = room.getState().ship
   const [px, py, pz] = ship.position
   const [rx, ry, rz] = ship.rotation
-  scene.shipMesh.position.set(px, py, pz)
-  scene.shipMesh.setRotationFromEuler(new Euler(rx, ry, rz, 'YXZ'))
+  scene.shipGroup.position.set(px, py, pz)
+  scene.shipGroup.setRotationFromEuler(new Euler(rx, ry, rz, 'YXZ'))
 
-  const camOffset = new Vector3(0, 4, 12)
-  camOffset.applyEuler(new Euler(rx * 0.3, ry, 0, 'YXZ'))
-  scene.camera.position.set(px + camOffset.x, py + camOffset.y, pz + camOffset.z)
-  scene.camera.lookAt(px, py, pz)
+  // Animate cockpit controls
+  scene.cockpit.update(raw, ship, dt)
 
   scene.render()
   requestAnimationFrame(loop)

@@ -3,7 +3,7 @@ import type { StationHandler } from './StationHandler.js'
 import type { StationInput } from '../input/InputTypes.js'
 import type { GameState } from '../state/GameState.js'
 
-const VERTICAL_SPEED = 3
+const VERTICAL_ACCEL = 5  // units/s²
 
 export const verticalHandler: StationHandler = {
   station: Station.Vertical,
@@ -12,7 +12,7 @@ export const verticalHandler: StationHandler = {
     return {
       ship: {
         ...state.ship,
-        velocity: [vx, vy + input.payload.verticalDelta * VERTICAL_SPEED, vz],
+        velocity: [vx, vy + input.payload.verticalDelta * VERTICAL_ACCEL * input.dt, vz],
       },
     }
   },

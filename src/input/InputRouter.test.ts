@@ -7,6 +7,7 @@ import { createInitialGameState } from '../state/GameState.js'
 import type { RawInput } from './InputTypes.js'
 
 const ZERO_INPUT: RawInput = { yaw: 0, pitch: 0, roll: 0, throttleDelta: 0, verticalDelta: 0 }
+const DT = 0.016
 
 describe('InputRouter', () => {
   let router: InputRouter
@@ -29,21 +30,21 @@ describe('InputRouter', () => {
   it('dispatches yaw input through HelmHandler', () => {
     router.assignStations('p1', [Station.Helm])
     const state = createInitialGameState()
-    const result = router.dispatch('p1', { ...ZERO_INPUT, yaw: 1 }, state)
+    const result = router.dispatch('p1', { ...ZERO_INPUT, yaw: 1 }, state, DT)
     expect(result.ship.rotation[1]).toBeGreaterThan(0)
   })
 
   it('dispatches throttle input through ThrottleHandler', () => {
     router.assignStations('p1', [Station.Throttle])
     const state = createInitialGameState()
-    const result = router.dispatch('p1', { ...ZERO_INPUT, throttleDelta: 1 }, state)
+    const result = router.dispatch('p1', { ...ZERO_INPUT, throttleDelta: 1 }, state, DT)
     expect(result.ship.throttle).toBeGreaterThan(0)
   })
 
   it('game logic does not access player mapping', () => {
     router.assignStations('p1', [Station.Helm])
     const state = createInitialGameState()
-    const result = router.dispatch('p1', ZERO_INPUT, state)
+    const result = router.dispatch('p1', ZERO_INPUT, state, DT)
     expect(result.ship.rotation).toEqual([0, 0, 0])
   })
 })
