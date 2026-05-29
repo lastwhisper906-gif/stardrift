@@ -52,6 +52,10 @@ export class CockpitRoom {
   private doorTarget = 0
   private doorOffset = 0
 
+  // Station beacons
+  private readonly repairBeaconMat: MeshStandardMaterial
+  private readonly o2BeaconMat:     MeshStandardMaterial
+
   constructor() {
     this.group = new Group()
     this.buildFloor()
@@ -65,22 +69,28 @@ export class CockpitRoom {
     this.sensorGreen    = door.sensorGreen
     this.sensorRed      = door.sensorRed
     this.buildHelmSeat()
-    this.buildSecondaryStations()
+    const beacons = this.buildSecondaryStations()
+    this.repairBeaconMat = beacons.repairMat
+    this.o2BeaconMat     = beacons.o2Mat
     this.buildBackEquipment()
     this.addLighting()
   }
 
-  /** Animate entrance door — call every frame */
-  update(charZ: number, dt: number): void {
+  /** Animate entrance door + station beacons — call every frame */
+  update(charZ: number, dt: number, time = 0): void {
+    // Door
     this.doorTarget = charZ > ROOM.backZ - 2.5 ? 0.65 : 0
     this.doorOffset += (this.doorTarget - this.doorOffset) * Math.min(1, dt * 6)
-
     this.leftDoorPanel.position.x  = -0.325 - this.doorOffset
     this.rightDoorPanel.position.x =  0.325 + this.doorOffset
-
     const isOpen = this.doorOffset > 0.05
     this.sensorGreen.visible = isOpen
     this.sensorRed.visible   = !isOpen
+
+    // Beacon pulse (0.4–1.0 intensity, 1.2 Hz)
+    const pulse = 0.5 + 0.5 * Math.sin(time * Math.PI * 2 * 1.2)
+    this.repairBeaconMat.emissiveIntensity = 0.4 + pulse * 0.6
+    this.o2BeaconMat.emissiveIntensity     = 0.4 + pulse * 0.6
   }
 
   private buildFloor(): void {
@@ -472,42 +482,55 @@ export class CockpitRoom {
     this.group.add(prompt)
   }
 
-  private buildSecondaryStations(): void {
-    const fy  = ROOM.floorY
+  private buildSecondaryStations(): { repairMat: MeshStandardMaterial; o2Mat: MeshStandardMaterial } {
+    const fy   = ROOM.floorY
     const sMat = mat(0x141422, 0.3, 0.85)
     const sMfd = mat(0x001428, 0.1, 0.3, 0x000c1e, 0.5)
 
     for (const sx of [-1, 1] as const) {
       const cx = sx * 3.7
-      // Console body
       const con = new Mesh(new BoxGeometry(1.2, 1.0, 2.8), sMat)
       con.position.set(cx, fy + 0.5, 3.2)
       this.group.add(con)
 
-      // Angled display surface
       const disp = new Mesh(new BoxGeometry(0.95, 0.45, 0.04), sMfd)
       disp.rotation.x = -0.28
       disp.position.set(cx + sx * -0.15, fy + 1.08, 2.35)
       this.group.add(disp)
 
-      // Mini displays
       for (let di = 0; di < 2; di++) {
         const md = new Mesh(new BoxGeometry(0.32, 0.22, 0.03), sMfd)
         md.position.set(cx + sx * (-0.4 + di * sx * 0.5), fy + 0.95, 1.8 + di * 0.55)
         this.group.add(md)
       }
 
-      // Indicator lights
       const colors = [0x00ff44, 0xffaa00, 0xff3300, 0x0055ff]
       colors.forEach((c, i) => {
-        const led = new Mesh(
-          new BoxGeometry(0.04, 0.04, 0.025),
-          mat(c, 0.1, 0.3, c, 0.7),
-        )
+        const led = new Mesh(new BoxGeometry(0.04, 0.04, 0.025), mat(c, 0.1, 0.3, c, 0.7))
         led.position.set(cx + sx * (0.45 - i * 0.07), fy + 1.15, 2.4)
         this.group.add(led)
       })
     }
+
+    // ── Station-type beacons ────────────────────────────────────────────────
+    // Left = REPAIR (green), Right = O2 (blue)
+    const repairMat = mat(0x003300, 0.1, 0.4, 0x00ff55, 0.8)
+    const o2Mat     = mat(0x001133, 0.1, 0.4, 0x0088ff, 0.8)
+
+    const buildBeacon = (bx: number, bm: MeshStandardMaterial, label: string): void => {
+      const beacon = new Mesh(new BoxGeometry(0.12, 0.12, 0.12), bm)
+      beacon.position.set(bx, fy + 1.42, 3.2)
+      this.group.add(beacon)
+      // Label plate
+      const plate = new Mesh(new BoxGeometry(0.60, 0.10, 0.03), bm)
+      plate.position.set(bx, fy + 1.62, 2.0)
+      this.group.add(plate)
+      void label  // string used as documentation only
+    }
+    buildBeacon(-3.7, repairMat, 'REPAIR')
+    buildBeacon( 3.7, o2Mat,     'OXYGEN')
+
+    return { repairMat, o2Mat }
   }
 
   private buildBackEquipment(): void {

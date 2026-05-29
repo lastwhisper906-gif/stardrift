@@ -82,12 +82,14 @@ function resetGame(): void {
   hud.hideEndScreen()
 }
 
-let lastTime = performance.now()
+let lastTime  = performance.now()
+let totalTime = 0
 
 function loop(): void {
   const now = performance.now()
-  const dt = Math.min((now - lastTime) / 1000, 0.05)
-  lastTime = now
+  const dt  = Math.min((now - lastTime) / 1000, 0.05)
+  lastTime   = now
+  totalTime += dt
 
   const mode = camCtrl.mode
 
@@ -156,7 +158,7 @@ function loop(): void {
     }
 
     // Entrance door animation
-    cockpitRoom.update(character.position.z, dt)
+    cockpitRoom.update(character.position.z, dt, totalTime)
 
     const state = room.getState()
     const physShip = updatePhysics(state.ship, dt)
