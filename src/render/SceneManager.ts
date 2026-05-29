@@ -38,14 +38,14 @@ export class SceneManager {
     document.body.appendChild(this.renderer.domElement)
 
     // ── Lighting ─────────────────────────────────────────────────────────
-    this.scene.add(new AmbientLight(0xffffff, 0.25))
+    this.scene.add(new AmbientLight(0xffffff, 0.35))
 
     const sun = new DirectionalLight(0xfff8e8, 1.0)
     sun.position.set(20, 30, 10)
     this.scene.add(sun)
 
-    // Cockpit screen glow
-    const screenGlow = new PointLight(0x0044aa, 0.6, 2.5)
+    // Cockpit screen glow (instrument lights)
+    const screenGlow = new PointLight(0x0044aa, 0.8, 3.5)
     screenGlow.position.set(0, EYE_Y - 0.3, EYE_Z - 0.6)
 
     // ── Stars ─────────────────────────────────────────────────────────────
@@ -60,6 +60,15 @@ export class SceneManager {
 
     // Screen glow follows cockpit
     this.shipGroup.add(screenGlow)
+
+    // Interior fill lights (overhead + back)
+    const interiorFill = new PointLight(0xaabbcc, 0.5, 22)
+    interiorFill.position.set(0, 3.0, 7.0)
+    this.shipGroup.add(interiorFill)
+
+    const backFill = new PointLight(0x8899aa, 0.3, 18)
+    backFill.position.set(0, 2.5, 13.0)
+    this.shipGroup.add(backFill)
 
     // Cockpit interior
     this.cockpit = new CockpitInterior()

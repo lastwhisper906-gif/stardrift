@@ -15,7 +15,10 @@ const WALK_BACK  = 3.2
 export class CameraController {
   mode: CameraMode = 'walking'
 
-  private camYaw = Math.PI          // smoothly follows character facing
+  private camYaw   = Math.PI
+  private shakeAmt = 0
+  private shakeX   = 0
+  private shakeY   = 0
   private readonly _lookWorld = new Vector3()
 
   constructor(
@@ -23,9 +26,21 @@ export class CameraController {
     private readonly shipGroup: Group,
   ) {}
 
-  update(character: CharacterController): void {
+  shake(intensity: number): void {
+    this.shakeAmt = Math.max(this.shakeAmt, intensity)
+  }
+
+  update(character: CharacterController, dt = 0.016): void {
+    // Decay shake
+    if (this.shakeAmt > 0) {
+      this.shakeAmt = Math.max(0, this.shakeAmt - dt * 5)
+      this.shakeX   = (Math.random() * 2 - 1) * this.shakeAmt * 0.05
+      this.shakeY   = (Math.random() * 2 - 1) * this.shakeAmt * 0.05
+    } else {
+      this.shakeX = this.shakeY = 0
+    }
+
     if (this.mode === 'exterior') {
-      // Camera in ship-local space — stays behind/above regardless of ship orientation
       this.camera.position.copy(EXT_POS)
       this._lookWorld.copy(EXT_TARGET)
       this.shipGroup.localToWorld(this._lookWorld)
@@ -34,7 +49,9 @@ export class CameraController {
     }
 
     if (this.mode === 'piloting') {
-      this.camera.position.copy(PILOT_EYE)
+      this.camera.position.set(
+        PILOT_EYE.x + this.shakeX, PILOT_EYE.y + this.shakeY, PILOT_EYE.z,
+      )
       this.camera.rotation.set(0, 0, 0)
       return
     }

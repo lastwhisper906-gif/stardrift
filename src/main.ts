@@ -243,14 +243,17 @@ function loop(): void {
   scene.shipGroup.setRotationFromEuler(new Euler(rx, ry, rz, 'YXZ'))
 
   // ── Camera update ────────────────────────────────────────────────────────
-  camCtrl.update(character)
+  camCtrl.update(character, dt)
 
   // ── HUD ──────────────────────────────────────────────────────────────────
   const nearHelm = mode === 'walking' && character.isNearHelm()
   hud.setInteractPrompt(nearHelm)
 
-  // Impact audio when hull decreases
-  if (ship.hull < prevHull - 0.5) audio.playImpact()
+  // Impact audio + camera shake when hull decreases
+  if (ship.hull < prevHull - 0.5) {
+    audio.playImpact()
+    camCtrl.shake(1.0)
+  }
   prevHull = ship.hull
 
   // Pre-compute station distance for HUD and docking
