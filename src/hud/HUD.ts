@@ -25,6 +25,7 @@ export class HUD {
   private readonly o2Val: HTMLElement
   private readonly warningPanel: HTMLElement
   private readonly distEl: HTMLElement
+  private readonly warnTextEl: HTMLElement
   private readonly damageOverlay: HTMLElement
   private interactPrompt!: HTMLElement
   private repairPrompt!: HTMLElement
@@ -259,7 +260,8 @@ export class HUD {
     this.o2Fill = document.getElementById('hud-o2-fill')!
     this.o2Val = document.getElementById('hud-o2-val')!
     this.warningPanel = warnPanel
-    this.distEl         = document.getElementById('hud-dist')!
+    this.distEl       = document.getElementById('hud-dist')!
+    this.warnTextEl   = document.getElementById('hud-warn-text')!
     this.interactPrompt = interactPrompt
     this.repairPrompt   = repairPrompt
     this.alienPanel     = alienPanel
@@ -279,7 +281,7 @@ export class HUD {
     this.damageOverlay  = dmg
   }
 
-  update(ship: ShipState, phase: GamePhase, asteroidDist?: number): void {
+  update(ship: ShipState, phase: GamePhase, threatDist?: number, eventId = 'asteroid'): void {
     // Speed
     const spd = Math.sqrt(ship.velocity[0] ** 2 + ship.velocity[1] ** 2 + ship.velocity[2] ** 2)
     this.speedEl.textContent = spd.toFixed(1)
@@ -307,10 +309,16 @@ export class HUD {
     if (ship.hull < this.prevHull) this.flashDamage()
     this.prevHull = ship.hull
 
-    // Asteroid warning
-    if (phase === 'IN_EVENT' && asteroidDist !== undefined) {
+    // Threat warning panel
+    if (phase === 'IN_EVENT' && threatDist !== undefined) {
       this.warningPanel.style.display = 'block'
-      this.distEl.textContent = `DIST: ${Math.round(asteroidDist)} m`
+      this.distEl.textContent = `DIST: ${Math.round(threatDist)} m`
+      const labels: Record<string, string> = {
+        asteroid:  '⚠ ASTEROID INCOMING ⚠',
+        blackhole: '⚠ GRAVITATIONAL ANOMALY ⚠',
+        eva:       '⚠ EVA IN PROGRESS ⚠',
+      }
+      this.warnTextEl.textContent = labels[eventId] ?? '⚠ ALERT ⚠'
     } else {
       this.warningPanel.style.display = 'none'
     }

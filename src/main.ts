@@ -9,6 +9,8 @@ import { KeyboardInput } from './input/KeyboardInput.js'
 import { EventManager } from './events/EventManager.js'
 import { AsteroidEvent } from './events/AsteroidEvent.js'
 import { AlienEvent } from './events/AlienEvent.js'
+import { BlackHoleEvent } from './events/BlackHoleEvent.js'
+import { EvaEvent } from './events/EvaEvent.js'
 import { HUD } from './hud/HUD.js'
 import { CharacterController } from './character/CharacterController.js'
 import { CameraController } from './camera/CameraController.js'
@@ -47,11 +49,15 @@ scene.cockpit.setArmsVisible(false)
 camCtrl.setMode('walking')
 
 // ── Events ────────────────────────────────────────────────────────────────────
-const asteroidEvent = new AsteroidEvent(scene.scene, room)
-const alienEvent    = new AlienEvent(scene.scene, room)
-const eventManager  = new EventManager(room)
+const asteroidEvent   = new AsteroidEvent(scene.scene, room)
+const alienEvent      = new AlienEvent(scene.scene, room)
+const blackHoleEvent  = new BlackHoleEvent(scene.scene, room)
+const evaEvent        = new EvaEvent(room)
+const eventManager    = new EventManager(room)
 eventManager.register(asteroidEvent)
 eventManager.register(alienEvent)
+eventManager.register(blackHoleEvent)
+eventManager.register(evaEvent)
 
 // ── HUD ───────────────────────────────────────────────────────────────────────
 const hud   = new HUD()
@@ -196,9 +202,14 @@ function loop(): void {
     if (pilotingTimer >= nextTriggerDelay) {
       pilotingTimer    = 0
       nextTriggerDelay = 22 + Math.random() * 22
-      // Alternate: every other trigger is an alien event
-      const useAlien = Math.random() < 0.45
-      eventManager.trigger(useAlien ? 'alien' : 'asteroid')
+      // Weighted random event selection
+      const roll = Math.random()
+      const hull = room.getState().ship.hull
+      let eventId = 'asteroid'
+      if (roll < 0.30) eventId = 'alien'
+      else if (roll < 0.45) eventId = 'blackhole'
+      else if (hull < 40) eventId = 'eva'   // EVA only triggers when hull is critical
+      eventManager.trigger(eventId)
     }
     // Player fires at alien (Space key while piloting)
     if (keyboard.consumeJustPressed('Space') && eventManager.getActiveEventId() === 'alien') {
@@ -249,8 +260,10 @@ function loop(): void {
   const shipSpeed     = Math.sqrt(ship.velocity[0]**2 + ship.velocity[1]**2 + ship.velocity[2]**2)
 
   const activeEvent = eventManager.getActiveEventId()
-  const asteroidDist = activeEvent === 'asteroid' ? asteroidEvent.getDistanceToShip() : undefined
-  hud.update(ship, room.getState().phase, asteroidDist)
+  const asteroidDist = activeEvent === 'asteroid' ? asteroidEvent.getDistanceToShip()
+                     : activeEvent === 'blackhole' ? blackHoleEvent.getDistanceToShip()
+                     : undefined
+  hud.update(ship, room.getState().phase, asteroidDist, activeEvent ?? 'asteroid')
 
   if (activeEvent === 'alien') {
     hud.setAlienWarning(true, alienEvent.getDistanceToShip(), alienEvent.getHealth())
