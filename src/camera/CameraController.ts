@@ -1,11 +1,14 @@
-import { PerspectiveCamera, Vector3 } from 'three'
+import { PerspectiveCamera, Quaternion, Vector3 } from 'three'
 import type { Group } from 'three'
 import type { CharacterController } from '../character/CharacterController.js'
 import { ROOM } from '../render/CockpitRoom.js'
+import { HANGAR } from '../render/CorridorHangar.js'
 
-export type CameraMode = 'walking' | 'piloting' | 'exterior'
+export type CameraMode = 'walking' | 'piloting' | 'exterior' | 'subship_piloting'
 
-const PILOT_EYE  = new Vector3(0, 0.08, 0.10)
+const PILOT_EYE      = new Vector3(0, 0.08, 0.10)
+const SUBSHIP_EYE    = new Vector3(0, 0.30, 37.8)   // fallback when group not set
+const SUBSHIP_LOCAL  = new Vector3(0, 0.30, -2.0)   // seated eye height, dashboard below
 const EXT_POS    = new Vector3(0, 14, 38)
 const EXT_TARGET = new Vector3(0, 2, 8)
 const WALK_UP    = 1.5
@@ -29,11 +32,17 @@ export class CameraController {
   private posReady = false          // false = re-init from current camera on next frame
 
   private readonly _lookWorld = new Vector3()
+  private readonly _tmpV     = new Vector3()
+  private readonly _subQ     = new Quaternion()
+  private readonly _shipQ    = new Quaternion()
+  private subshipGroup: Group | null = null
 
   constructor(
     private readonly camera: PerspectiveCamera,
     private readonly shipGroup: Group,
   ) {}
+
+  setSubshipGroup(g: Group | null): void { this.subshipGroup = g }
 
   shake(intensity: number): void {
     this.shakeAmt = Math.max(this.shakeAmt, intensity)
@@ -59,7 +68,7 @@ export class CameraController {
       return
     }
 
-    // ── Piloting (1st-person) ─────────────────────────────────────────────
+    // ── Piloting (1st-person main cockpit) ───────────────────────────────
     if (this.mode === 'piloting') {
       this.camera.position.set(
         PILOT_EYE.x + this.shakeX,
@@ -67,7 +76,36 @@ export class CameraController {
         PILOT_EYE.z,
       )
       this.camera.rotation.set(0, 0, 0)
-      this.posReady = false   // reset so next walking entry starts a smooth transition
+      this.posReady = false
+      return
+    }
+
+    // ── Sub-ship piloting (1st-person sub-ship cockpit) ───────────────────
+    if (this.mode === 'subship_piloting') {
+      if (this.subshipGroup) {
+        // Eye position: convert from subship local → world → shipGroup local
+        this._tmpV.copy(SUBSHIP_LOCAL)
+        this.subshipGroup.localToWorld(this._tmpV)
+        this.shipGroup.worldToLocal(this._tmpV)
+        this.camera.position.set(
+          this._tmpV.x + this.shakeX,
+          this._tmpV.y + this.shakeY,
+          this._tmpV.z,
+        )
+        // Orientation: use lookAt toward the subship nose (z=-20 in subship local).
+        // lookAt() handles the shipGroup parent transform automatically.
+        this._lookWorld.set(0, 0, -20)
+        this.subshipGroup.localToWorld(this._lookWorld)
+        this.camera.lookAt(this._lookWorld)
+      } else {
+        this.camera.position.set(
+          SUBSHIP_EYE.x + this.shakeX,
+          SUBSHIP_EYE.y + this.shakeY,
+          SUBSHIP_EYE.z,
+        )
+        this.camera.rotation.set(0, 0, 0)
+      }
+      this.posReady = false
       return
     }
 
@@ -87,7 +125,7 @@ export class CameraController {
     const rawX = p.x + bx * WALK_BACK
     const rawZ = p.z + bz * WALK_BACK
     const tgtX = Math.max(ROOM.leftX  + 0.5, Math.min(ROOM.rightX - 0.5, rawX))
-    const tgtZ = Math.max(ROOM.frontZ + 0.5, Math.min(ROOM.backZ   - 0.5, rawZ))
+    const tgtZ = Math.max(ROOM.frontZ + 0.5, Math.min(HANGAR.backZ - 0.5, rawZ))
     const tgtY = p.y + WALK_UP  // Y also smoothed to absorb jumps/bobs
 
     // First frame after entering walking mode: seed smoothPos from current position
@@ -113,10 +151,11 @@ export class CameraController {
 
   setMode(mode: CameraMode): void {
     if (mode === 'walking') {
-      // Signal to re-seed smoothPos on the next update() call so the camera
-      // starts its smooth glide from wherever it currently is (pilot eye, ext, …)
       this.posReady = false
     }
+    // Wide FOV for subship (sports-car feel) — narrow for main cockpit 1st-person
+    this.camera.fov = mode === 'subship_piloting' ? 92 : 65
+    this.camera.updateProjectionMatrix()
     this.mode = mode
   }
 
