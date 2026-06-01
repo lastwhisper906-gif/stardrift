@@ -6,6 +6,7 @@ export interface RawInput {
   roll: number
   throttleDelta: number
   verticalDelta: number
+  boost: boolean        // Space held = instant max throttle; release = drop to 0
 }
 
 export interface StationInput {

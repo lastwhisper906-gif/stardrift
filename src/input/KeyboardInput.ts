@@ -6,6 +6,9 @@ export class KeyboardInput {
 
   constructor() {
     window.addEventListener('keydown', (e) => {
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) {
+        e.preventDefault()
+      }
       if (!this.keys[e.code]) this.justPressedKeys.add(e.code)
       this.keys[e.code] = true
     })
@@ -14,15 +17,24 @@ export class KeyboardInput {
     })
   }
 
-  /** PILOTING mode: W/S=throttle, A/D=yaw, Q/E=roll, R/F=pitch, Z/X=vertical thrust */
+  /**
+   * PILOTING mode controls:
+   *   Space       = boost (instant max throttle while held; release = drop to 0)
+   *   W / S       = throttle up / down
+   *   A / ←       = yaw left        D / → = yaw right
+   *   ↑ / F       = pitch up (nose up)    ↓ / R = pitch down
+   *   Q / E       = roll
+   *   Z / X       = vertical thrust up / down
+   */
   getPilotInput(): RawInput {
     const k = this.keys
     return {
       yaw:           (k['KeyA'] || k['ArrowLeft']  ? -1 : 0) + (k['KeyD'] || k['ArrowRight'] ? 1 : 0),
-      pitch:         (k['KeyR'] ? -1 : 0) + (k['KeyF'] ? 1 : 0),
+      pitch:         (k['KeyR'] || k['ArrowDown']  ? -1 : 0) + (k['KeyF'] || k['ArrowUp']   ? 1 : 0),
       roll:          (k['KeyQ'] ? -1 : 0) + (k['KeyE'] ? 1 : 0),
-      throttleDelta: (k['KeyW'] || k['ArrowUp']    ?  1 : 0) + (k['KeyS'] || k['ArrowDown']  ? -1 : 0),
+      throttleDelta: (k['KeyW'] ?  1 : 0) + (k['KeyS'] ? -1 : 0),
       verticalDelta: (k['KeyZ'] ?  1 : 0) + (k['KeyX'] ? -1 : 0),
+      boost:         !!(k['Space']),
     }
   }
 

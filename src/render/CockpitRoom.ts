@@ -1,10 +1,12 @@
 import {
   BoxGeometry,
+  CylinderGeometry,
   Group,
   Mesh,
   MeshStandardMaterial,
   PlaneGeometry,
   PointLight,
+  TorusGeometry,
 } from 'three'
 
 // ── Room bounds (shipGroup local space) ──────────────────────────────────────
@@ -26,10 +28,6 @@ export interface CollisionBox { minX: number; maxX: number; minZ: number; maxZ: 
 export const COLLISION_BOXES: CollisionBox[] = [
   // Helm console / dashboard
   { minX: -1.6, maxX: 1.6,  minZ: -1.4, maxZ: -0.12 },
-  // Left secondary station
-  { minX: -4.5, maxX: -2.8, minZ:  1.5, maxZ:  5.0  },
-  // Right secondary station
-  { minX:  2.8, maxX:  4.5, minZ:  1.5, maxZ:  5.0  },
   // Left back rack
   { minX: -4.5, maxX: -3.0, minZ: 10.0, maxZ: 15.8  },
   // Right back rack
@@ -76,10 +74,14 @@ export class CockpitRoom {
     this.addLighting()
   }
 
-  /** Animate entrance door + station beacons — call every frame */
-  update(charZ: number, dt: number, time = 0): void {
-    // Door
-    this.doorTarget = charZ > ROOM.backZ - 2.5 ? 0.65 : 0
+  /**
+   * Animate entrance door + station beacons.
+   * @param alienInvading  true = door opens (alien emergency access)
+   * @param corridorOpen   true = door opens for sub-ship corridor access
+   */
+  update(alienInvading: boolean, corridorOpen: boolean, dt: number, time = 0): void {
+    // Door opens only during alien events or manual corridor access
+    this.doorTarget = (alienInvading || corridorOpen) ? 0.65 : 0
     this.doorOffset += (this.doorTarget - this.doorOffset) * Math.min(1, dt * 6)
     this.leftDoorPanel.position.x  = -0.325 - this.doorOffset
     this.rightDoorPanel.position.x =  0.325 + this.doorOffset
@@ -123,95 +125,225 @@ export class CockpitRoom {
   }
 
   private buildCeiling(): void {
-    const W = ROOM.rightX - ROOM.leftX
-    const D = ROOM.backZ  - ROOM.frontZ
+    const W  = ROOM.rightX - ROOM.leftX
+    const D  = ROOM.backZ  - ROOM.frontZ
     const cz = (ROOM.frontZ + ROOM.backZ) / 2
+    const cy = ROOM.ceilY
 
-    const ceil = new Mesh(new PlaneGeometry(W, D), mat(0x0b0b14))
+    // Flat center ceiling
+    const ceil = new Mesh(new PlaneGeometry(W, D), mat(0x080812))
     ceil.rotation.x = Math.PI / 2
-    ceil.position.set(0, ROOM.ceilY, cz)
+    ceil.position.set(0, cy, cz)
     this.group.add(ceil)
 
-    // Central strip lights (3 rows)
-    const stripMat = mat(0x223355, 0.1, 0.3, 0x0a1a2a, 0.6)
+    // ── Capsule-style angled ceiling panels (curve down at sides) ────────
+    // These angled slab panels create the impression of a rounded hull cross-section.
+    // Each panel is angled ~ 30° downward from center toward the wall.
+    for (const sx of [-1, 1] as const) {
+      for (let si = 0; si < 3; si++) {
+        const angle = (0.38 + si * 0.14) * sx   // tilt outward and down
+        const xOff  = sx * (1.4 + si * 1.1)
+        const panel = new Mesh(new BoxGeometry(1.2, 0.04, D * 0.88), mat(0x0b0b16, 0.35))
+        panel.position.set(xOff, cy - 0.04 - si * 0.18, cz)
+        panel.rotation.z = angle
+        this.group.add(panel)
+        // LED strip on inner edge
+        const led = new Mesh(new BoxGeometry(0.018, 0.014, D * 0.70),
+          mat(0x223355, 0.1, 0.3, 0x0a1a2a, 0.55))
+        led.position.set(xOff - sx * 0.55, cy - 0.04 - si * 0.18, cz)
+        this.group.add(led)
+      }
+    }
+
+    // Center spine strip lights (3 rows)
+    const stripMat = mat(0x223355, 0.1, 0.3, 0x0a1a2a, 0.65)
     for (const sx of [-1, 0, 1]) {
-      const strip = new Mesh(new BoxGeometry(0.07, 0.02, 14.0), stripMat)
-      strip.position.set(sx * 1.2, ROOM.ceilY - 0.012, 5.5)
+      const strip = new Mesh(new BoxGeometry(0.07, 0.020, 14.0), stripMat)
+      strip.position.set(sx * 1.1, cy - 0.012, 5.5)
       this.group.add(strip)
     }
 
-    // Cross-beams every 3 m
-    for (let z = 0; z <= 15; z += 3) {
-      const beam = new Mesh(new BoxGeometry(W, 0.14, 0.12), mat(0x0e0e18, 0.4))
-      beam.position.set(0, ROOM.ceilY - 0.07, ROOM.frontZ + z)
+    // Heavy structural ribs (submarine frame-ring style)
+    for (let z = 0; z <= 15; z += 2.5) {
+      const beam = new Mesh(new BoxGeometry(W + 0.4, 0.18, 0.14), mat(0x0e0e1c, 0.55))
+      beam.position.set(0, cy - 0.09, ROOM.frontZ + z)
       this.group.add(beam)
+      // Glow on underside of each rib
+      const ribGlow = new Mesh(new BoxGeometry(W * 0.7, 0.010, 0.10),
+        mat(0x001a33, 0.1, 0.3, 0x002a55, 0.55))
+      ribGlow.position.set(0, cy - 0.18, ROOM.frontZ + z)
+      this.group.add(ribGlow)
     }
 
-    // Cable conduit along left side of ceiling
-    const conduit = new Mesh(new BoxGeometry(0.08, 0.08, 12), mat(0x1a1a24, 0.5, 0.4))
-    conduit.position.set(ROOM.leftX + 0.6, ROOM.ceilY - 0.14, 5.5)
+    // Cable conduit
+    const conduit = new Mesh(new BoxGeometry(0.10, 0.10, 12), mat(0x1a1a28, 0.6, 0.4))
+    conduit.position.set(ROOM.leftX + 0.7, cy - 0.16, 5.5)
     this.group.add(conduit)
   }
 
-  // Movie-style panoramic front window ────────────────────────────────────────
+  // Sci-fi oval/arched panoramic window with dome protrusion ────────────────
   private buildFrontWindow(): void {
-    const z = ROOM.frontZ
-    const fh = ROOM.ceilY - ROOM.floorY  // 4.5
+    const z   = ROOM.frontZ   // -1.5
+    const fh  = ROOM.ceilY - ROOM.floorY   // 4.5
     const cmy = (ROOM.floorY + ROOM.ceilY) / 2
+    const W   = ROOM.rightX - ROOM.leftX   // 9
 
-    const struct = mat(0x0c0c16, 0.45, 0.7)
+    const struct = mat(0x080810, 0.60, 0.60)
+    const glow   = mat(0x001020, 0.1, 0.2, 0x0055cc, 1.0)
 
-    // Left structural column (x: -4.5 → -3.2)
-    const leftCol = new Mesh(new BoxGeometry(1.3, fh, 0.35), struct)
-    leftCol.position.set(-3.85, cmy, z + 0.175)
-    this.group.add(leftCol)
+    // ── Forward dome/bow protrusion (submarine nose-cone effect) ─────────
+    // A cluster of angled structural panels that "push" the cockpit nose
+    // outward in a rounded shape — visible as a convex bow from both inside
+    // and outside.
+    const domeDepth = 1.6   // how far the dome projects beyond z = ROOM.frontZ
+    const domeZ = z - domeDepth   // = -3.1 (apex of protrusion)
+    const domeMat = mat(0x080810, 0.65, 0.55)
 
-    // Right structural column (x: 3.2 → 4.5)
-    const rightCol = new Mesh(new BoxGeometry(1.3, fh, 0.35), struct)
-    rightCol.position.set(3.85, cmy, z + 0.175)
-    this.group.add(rightCol)
+    // Curved bow ribs — arranged radially around the center like a ship's bow
+    const bowAngles = [-0.62, -0.38, -0.18, 0, 0.18, 0.38, 0.62]  // Z-rotation angles
+    bowAngles.forEach((ang, i) => {
+      const sign = i < 3 ? -1 : i > 3 ? 1 : 0
+      const xOff = sign * (Math.abs(ang) * 2.8)
+      const zOff = -(1 - Math.cos(ang)) * domeDepth * 1.4
+      const rib  = new Mesh(new BoxGeometry(0.12, fh, 0.14), domeMat)
+      rib.position.set(xOff, cmy, z + zOff)
+      rib.rotation.y = ang * 0.45
+      this.group.add(rib)
+    })
+    // Top dome cap (curved upper panels)
+    for (let i = 0; i < 5; i++) {
+      const t    = (i / 4) * Math.PI
+      const xOff = -Math.cos(t) * 3.2
+      const zOff = -Math.sin(t) * domeDepth * 0.7
+      const cap  = new Mesh(new BoxGeometry(1.6, 0.12, 0.14), domeMat)
+      cap.position.set(xOff, ROOM.ceilY, z + zOff)
+      cap.rotation.z = (t - Math.PI / 2) * 0.3
+      this.group.add(cap)
+    }
+    // Bottom dome cap
+    for (let i = 0; i < 5; i++) {
+      const t    = (i / 4) * Math.PI
+      const xOff = -Math.cos(t) * 3.2
+      const zOff = -Math.sin(t) * domeDepth * 0.7
+      const cap  = new Mesh(new BoxGeometry(1.6, 0.12, 0.14), domeMat)
+      cap.position.set(xOff, ROOM.floorY, z + zOff)
+      cap.rotation.z = -(t - Math.PI / 2) * 0.3
+      this.group.add(cap)
+    }
+    // Center apex strut
+    const apex = new Mesh(new BoxGeometry(0.18, fh, 0.18), domeMat)
+    apex.position.set(0, cmy, domeZ + 0.2)
+    this.group.add(apex)
+    const apexGlow = new Mesh(new BoxGeometry(0.06, fh * 0.85, 0.04), glow)
+    apexGlow.position.set(0, cmy, domeZ + 0.29)
+    this.group.add(apexGlow)
 
-    // Top beam (y: window top → ceiling)
-    const winTopY = 2.1
-    const topBeamH = ROOM.ceilY - winTopY
-    const topBeam = new Mesh(new BoxGeometry(ROOM.rightX - ROOM.leftX, topBeamH, 0.35), struct)
-    topBeam.position.set(0, winTopY + topBeamH / 2, z + 0.175)
-    this.group.add(topBeam)
+    // ── Deep side columns (submarine porthole effect — 1.2 m thick) ────────
+    const frameDepth = 1.20   // how far the frame juts INTO the room
+    for (const sx of [-1, 1] as const) {
+      // Outer face column (at front wall z=-1.5)
+      const colFront = new Mesh(new BoxGeometry(0.55, fh, 0.10), struct)
+      colFront.position.set(sx * 4.225, cmy, z + 0.05)
+      this.group.add(colFront)
 
-    // Bottom sill (below dash, y: floor → -0.15)
-    const sillH = -0.15 - ROOM.floorY
-    const sill = new Mesh(new BoxGeometry(ROOM.rightX - ROOM.leftX, sillH, 0.35), struct)
-    sill.position.set(0, ROOM.floorY + sillH / 2, z + 0.175)
+      // Deep jamb (extends from front wall back into room)
+      const jamb = new Mesh(new BoxGeometry(0.55, fh, frameDepth), struct)
+      jamb.position.set(sx * 4.225, cmy, z + frameDepth / 2)
+      this.group.add(jamb)
+
+      // Inner edge — LED reveal strip
+      const led = new Mesh(new BoxGeometry(0.020, fh * 0.70, 0.04), glow)
+      led.position.set(sx * 3.96, cmy, z + frameDepth + 0.02)
+      this.group.add(led)
+
+      // Inner face panel (visible from inside the room)
+      const innerPanel = new Mesh(new BoxGeometry(0.55, fh, 0.08), mat(0x0c0c1c, 0.5, 0.7))
+      innerPanel.position.set(sx * 4.225, cmy, z + frameDepth + 0.04)
+      this.group.add(innerPanel)
+    }
+
+    // ── Bottom sill (deep, submarine-style) ──────────────────────────────
+    const sillH    = -0.2 - ROOM.floorY
+    const sillDepth = 1.20
+    const sill  = new Mesh(new BoxGeometry(W, sillH, sillDepth), struct)
+    sill.position.set(0, ROOM.floorY + sillH / 2, z + sillDepth / 2)
     this.group.add(sill)
 
-    // Window frame detail strips (inner bevel)
-    const bevel = mat(0x151522, 0.5, 0.6)
-    const winH = winTopY - (-0.15)  // window opening height
-    const winW = 3.2 * 2             // window opening width
-    for (const [bx, bw, bh] of [
-      [0, winW, 0.08],              // top edge
-      [0, winW, 0.08],              // bottom edge (positioned separately)
-      [-winW / 2, 0.08, winH],      // left edge
-      [ winW / 2, 0.08, winH],      // right edge
-    ] as [number, number, number][]) {
-      const b = new Mesh(new BoxGeometry(bw, bh, 0.06), bevel)
-      b.position.set(bx, -0.15 + (bh < 0.1 ? (bh === 0.08 && bx === 0 ? winH : 0) : winH / 2), z + 0.35)
-      // This is getting complex; use explicit placement below
-      b.visible = false
-      this.group.add(b)
+    // ── Oval/elliptical top arch (Interstellar-style curved canopy) ───────
+    // Wider arch: from x=±4.0 at y=1.6, peaking at y=3.2 at x=0
+    const archBaseY = 1.6
+    const archPeakY = ROOM.ceilY - 0.15   // ~3.25
+    const archHalfW = 4.00                 // wider than before (was 3.70)
+    const archRiseH = archPeakY - archBaseY   // ~1.65
+
+    // Fill the remaining rectangular wall above arch (corners above the ellipse)
+    // We fill with angled pieces that block the corner triangles
+    const N_ARCH = 16  // arch segments
+    const archDepth = 1.20   // same depth as side columns for consistency
+    for (let i = 0; i < N_ARCH; i++) {
+      const t0 = (i / N_ARCH) * Math.PI
+      const t1 = ((i + 1) / N_ARCH) * Math.PI
+      const x0 = -archHalfW * Math.cos(t0), y0 = archBaseY + archRiseH * Math.sin(t0)
+      const x1 = -archHalfW * Math.cos(t1), y1 = archBaseY + archRiseH * Math.sin(t1)
+      const mx = (x0 + x1) / 2, my = (y0 + y1) / 2
+      const dx = x1 - x0, dy = y1 - y0
+      const segLen = Math.sqrt(dx * dx + dy * dy)
+      const angle  = Math.atan2(dy, dx)
+
+      // Deep arch rib (extends into room)
+      const rib = new Mesh(new BoxGeometry(segLen + 0.02, 0.12, archDepth), struct)
+      rib.position.set(mx, my, z + archDepth / 2)
+      rib.rotation.z = angle
+      this.group.add(rib)
+
+      // Inner edge glow strip (at back face of arch rib, facing pilot)
+      const ribGlow = new Mesh(new BoxGeometry(segLen, 0.025, 0.04), glow)
+      ribGlow.position.set(mx, my, z + archDepth + 0.02)
+      ribGlow.rotation.z = angle
+      this.group.add(ribGlow)
     }
-    // Explicit inner bevel frames
-    const bevelStrip = (w: number, h: number, px: number, py: number): void => {
-      const b = new Mesh(new BoxGeometry(w, h, 0.05), bevel)
-      b.position.set(px, py, z + 0.36)
-      this.group.add(b)
+
+    // ── Fill corner "triangles" above arch (solid wall outside ellipse) ───
+    // Use a fine grid of small boxes filling the area between ellipse top and ceiling
+    for (let xi = 0; xi < 14; xi++) {
+      for (const sx of [-1, 1] as const) {
+        const xFrac = xi / 14
+        const cx = sx * (archHalfW + (4.5 - archHalfW) * 0 + archHalfW * xFrac)
+        // Ellipse y at this x
+        const sinVal = Math.sqrt(Math.max(0, 1 - (cx / archHalfW) ** 2))
+        const archY  = archBaseY + archRiseH * sinVal
+        const fillH  = ROOM.ceilY - archY
+        if (fillH < 0.05) continue
+        const fill = new Mesh(new BoxGeometry(0.56, fillH, 0.38), struct)
+        fill.position.set(cx, archY + fillH / 2, z + 0.19)
+        this.group.add(fill)
+      }
     }
-    bevelStrip(winW, 0.07, 0, winTopY - 0.035)     // top
-    bevelStrip(winW, 0.07, 0, -0.15 + 0.035)        // bottom
-    bevelStrip(0.07, winH, -winW / 2 + 0.035, (-0.15 + winTopY) / 2)  // left
-    bevelStrip(0.07, winH,  winW / 2 - 0.035, (-0.15 + winTopY) / 2)  // right
-    // Center divider (thin, optional)
-    bevelStrip(0.055, winH, 0, (-0.15 + winTopY) / 2)
+    // Full-width top strip near ceiling (above all arch points)
+    const topStrip = new Mesh(new BoxGeometry(W, ROOM.ceilY - archPeakY, 0.38), struct)
+    topStrip.position.set(0, archPeakY + (ROOM.ceilY - archPeakY) / 2, z + 0.19)
+    this.group.add(topStrip)
+
+    // ── Frame glow on window edges ────────────────────────────────────────
+    // Bottom glow
+    const botGlow = new Mesh(new BoxGeometry(8.0, 0.022, 0.04), glow)
+    botGlow.position.set(0, -0.185, z + 0.38)
+    this.group.add(botGlow)
+
+    // Side glow strips (from bottom to arch base)
+    for (const sx of [-1, 1] as const) {
+      const sideGlow = new Mesh(new BoxGeometry(0.022, archBaseY - (-0.2), 0.04), glow)
+      sideGlow.position.set(sx * 4.00, (-0.2 + archBaseY) / 2, z + 0.38)
+      this.group.add(sideGlow)
+    }
+
+    // ── Thin horizontal HUD rail (fighter-jet feel) ───────────────────────
+    const rail = new Mesh(new BoxGeometry(8.0, 0.055, 0.10), mat(0x0c0c1e, 0.55, 0.6))
+    rail.position.set(0, 1.55, z + 0.38)
+    this.group.add(rail)
+    const railGlow = new Mesh(new BoxGeometry(7.8, 0.018, 0.04), glow)
+    railGlow.position.set(0, 1.55, z + 0.42)
+    this.group.add(railGlow)
   }
 
   private buildSideWalls(): void {
@@ -442,44 +574,100 @@ export class CockpitRoom {
   }
 
   private buildHelmSeat(): void {
-    const fy = ROOM.floorY
-    const z  = HELM_SEAT_Z
-    const cushion = mat(0x1a1a2a, 0.2, 0.9)
-    const frame   = mat(0x252535, 0.7, 0.3)
+    const fy  = ROOM.floorY
+    const z   = HELM_SEAT_Z
+    // Sci-fi flight seat materials
+    const carbon = mat(0x0e0e18, 0.65, 0.45)      // carbon-fibre dark shell
+    const pad    = mat(0x141420, 0.18, 0.88)       // seat padding
+    const frame  = mat(0x2a2a40, 0.82, 0.20)       // metal frame
+    const glow   = mat(0x002244, 0.05, 0.3, 0x0044cc, 0.70)  // accent glow
 
-    // Seat cushion
-    const seat = new Mesh(new BoxGeometry(0.52, 0.08, 0.46), cushion)
-    seat.position.set(0, fy + 0.52, z)
+    const sy = fy + 0.54   // seat top y
+
+    // ── Carbon-shell bucket seat ─────────────────────────────────────────
+    // Outer shell (slightly wider than padding)
+    const shell = new Mesh(new BoxGeometry(0.68, 0.08, 0.56), carbon)
+    shell.position.set(0, sy - 0.02, z)
+    this.group.add(shell)
+    // Cushion
+    const seat = new Mesh(new BoxGeometry(0.58, 0.06, 0.46), pad)
+    seat.position.set(0, sy + 0.015, z)
     this.group.add(seat)
 
-    // Back + headrest
-    const back = new Mesh(new BoxGeometry(0.52, 0.52, 0.07), cushion)
-    back.position.set(0, fy + 0.86, z + 0.22)
-    this.group.add(back)
+    // ── Tall angled seat back ────────────────────────────────────────────
+    const backShell = new Mesh(new BoxGeometry(0.66, 0.82, 0.10), carbon)
+    backShell.position.set(0, sy + 0.44, z + 0.27)
+    backShell.rotation.x = -0.08
+    this.group.add(backShell)
+    const backPad = new Mesh(new BoxGeometry(0.55, 0.70, 0.06), pad)
+    backPad.position.set(0, sy + 0.44, z + 0.24)
+    backPad.rotation.x = -0.08
+    this.group.add(backPad)
 
-    const head = new Mesh(new BoxGeometry(0.30, 0.20, 0.07), cushion)
-    head.position.set(0, fy + 1.14, z + 0.20)
-    this.group.add(head)
-
-    // Armrests
-    for (const sx of [-0.30, 0.30]) {
-      const ar = new Mesh(new BoxGeometry(0.08, 0.05, 0.40), cushion)
-      ar.position.set(sx, fy + 0.62, z - 0.04)
-      this.group.add(ar)
+    // ── Wraparound headrest with side cheeks ─────────────────────────────
+    const headMain = new Mesh(new BoxGeometry(0.44, 0.26, 0.10), carbon)
+    headMain.position.set(0, sy + 0.92, z + 0.24)
+    this.group.add(headMain)
+    for (const sx of [-1, 1] as const) {
+      const cheek = new Mesh(new BoxGeometry(0.07, 0.22, 0.12), carbon)
+      cheek.position.set(sx * 0.245, sy + 0.92, z + 0.25)
+      this.group.add(cheek)
     }
 
-    // Leg frame
-    for (const [lx, lz] of [[-0.22, -0.20], [0.22, -0.20], [-0.22, 0.20], [0.22, 0.20]] as [number, number][]) {
-      const leg = new Mesh(new BoxGeometry(0.05, 0.54, 0.05), frame)
-      leg.position.set(lx, fy + 0.27, z + lz)
-      this.group.add(leg)
+    // ── 5-point harness straps (decorative geometry) ─────────────────────
+    const strapMat = mat(0x1a1a2e, 0.25, 0.90)
+    // Shoulder straps
+    for (const sx of [-1, 1] as const) {
+      const strap = new Mesh(new BoxGeometry(0.06, 0.60, 0.025), strapMat)
+      strap.position.set(sx * 0.18, sy + 0.15, z + 0.22)
+      strap.rotation.x = -0.15; strap.rotation.z = sx * 0.12
+      this.group.add(strap)
+    }
+    // Lap belt (horizontal)
+    const lap = new Mesh(new BoxGeometry(0.50, 0.055, 0.025), strapMat)
+    lap.position.set(0, sy + 0.025, z + 0.06); this.group.add(lap)
+    // Central buckle
+    const buckle = new Mesh(new BoxGeometry(0.085, 0.085, 0.032),
+      mat(0x3a3a50, 0.85, 0.18))
+    buckle.position.set(0, sy + 0.06, z + 0.22); this.group.add(buckle)
+
+    // ── Side bolsters (carbon wings) ─────────────────────────────────────
+    for (const sx of [-1, 1] as const) {
+      const bolster = new Mesh(new BoxGeometry(0.07, 0.48, 0.54), carbon)
+      bolster.position.set(sx * 0.345, sy + 0.26, z - 0.01)
+      this.group.add(bolster)
     }
 
-    // [F] interact indicator (small glowing box)
+    // ── Metal pedestal frame ──────────────────────────────────────────────
+    // Central column
+    const col = new Mesh(new CylinderGeometry(0.055, 0.070, 0.58, 8), frame)
+    col.position.set(0, fy + 0.29, z + 0.08); this.group.add(col)
+    // Base plate
+    const base = new Mesh(new BoxGeometry(0.52, 0.04, 0.52), frame)
+    base.position.set(0, fy + 0.022, z); this.group.add(base)
+    // Cross bracing
+    for (const sx of [-1, 1] as const) {
+      const brace = new Mesh(new BoxGeometry(0.035, 0.035, 0.46), frame)
+      brace.position.set(sx * 0.24, fy + 0.10, z); this.group.add(brace)
+    }
+
+    // ── Armrest consoles ──────────────────────────────────────────────────
+    for (const sx of [-0.34, 0.34]) {
+      const ar = new Mesh(new BoxGeometry(0.09, 0.055, 0.42), carbon)
+      ar.position.set(sx, sy + 0.03, z - 0.04); this.group.add(ar)
+      // Glow edge on armrest
+      const arGlow = new Mesh(new BoxGeometry(0.075, 0.010, 0.38), glow)
+      arGlow.position.set(sx, sy + 0.058, z - 0.04); this.group.add(arGlow)
+    }
+
+    // ── Seat glow strip (under seat, ambient) ─────────────────────────────
+    const underGlow = new Mesh(new BoxGeometry(0.58, 0.010, 0.46), glow)
+    underGlow.position.set(0, sy - 0.042, z); this.group.add(underGlow)
+
+    // [F] interact indicator
     const promptMat = mat(0x0088cc, 0.2, 0.4, 0x005588, 0.55)
     const prompt = new Mesh(new BoxGeometry(0.07, 0.035, 0.025), promptMat)
-    prompt.position.set(0.32, fy + 0.60, z - 0.14)
-    this.group.add(prompt)
+    prompt.position.set(0.40, fy + 0.62, z - 0.18); this.group.add(prompt)
   }
 
   private buildSecondaryStations(): { repairMat: MeshStandardMaterial; o2Mat: MeshStandardMaterial } {
@@ -489,8 +677,9 @@ export class CockpitRoom {
 
     for (const sx of [-1, 1] as const) {
       const cx = sx * 3.7
-      const con = new Mesh(new BoxGeometry(1.2, 1.0, 2.8), sMat)
-      con.position.set(cx, fy + 0.5, 3.2)
+      // Slim wall-mounted console (replaces old desk box — just a panel on the wall)
+      const con = new Mesh(new BoxGeometry(0.18, 2.60, 2.8), sMat)
+      con.position.set(cx + sx * 0.45, fy + 1.30, 3.2)
       this.group.add(con)
 
       const disp = new Mesh(new BoxGeometry(0.95, 0.45, 0.04), sMfd)

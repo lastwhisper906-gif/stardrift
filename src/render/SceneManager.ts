@@ -1,16 +1,19 @@
 import {
   AmbientLight,
   DirectionalLight,
+  Euler,
   Group,
   PerspectiveCamera,
   PointLight,
   Scene,
   WebGLRenderer,
 } from 'three'
-import { createStarField } from './StarField.js'
+// import { createStarField } from './StarField.js'  // disabled for performance
 import { CockpitInterior } from './CockpitInterior.js'
 import { ShipExterior } from './ShipExterior.js'
 import { SpaceStation } from './SpaceStation.js'
+import { CorridorHangar } from './CorridorHangar.js'
+import { SubshipVehicle, SUBSHIP_OFFSET_Z } from './SubshipVehicle.js'
 
 // Pilot eye position inside the cockpit (shipGroup local space)
 const EYE_X = 0
@@ -26,6 +29,8 @@ export class SceneManager {
   readonly shipExterior: ShipExterior
   readonly muzzleLight: PointLight
   readonly spaceStation: SpaceStation
+  readonly corridorHangar: CorridorHangar
+  readonly subship: SubshipVehicle
 
   constructor() {
     this.scene = new Scene()
@@ -34,11 +39,11 @@ export class SceneManager {
 
     this.renderer = new WebGLRenderer({ antialias: true })
     this.renderer.setSize(window.innerWidth, window.innerHeight)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     document.body.appendChild(this.renderer.domElement)
 
     // ── Lighting ─────────────────────────────────────────────────────────
-    this.scene.add(new AmbientLight(0xffffff, 0.35))
+    this.scene.add(new AmbientLight(0xffffff, 0.55))  // brighter interior
 
     const sun = new DirectionalLight(0xfff8e8, 1.0)
     sun.position.set(20, 30, 10)
@@ -48,8 +53,8 @@ export class SceneManager {
     const screenGlow = new PointLight(0x0044aa, 0.8, 3.5)
     screenGlow.position.set(0, EYE_Y - 0.3, EYE_Z - 0.6)
 
-    // ── Stars ─────────────────────────────────────────────────────────────
-    this.scene.add(createStarField())
+    // Stars disabled for performance testing
+    // this.scene.add(createStarField())
 
     // ── Ship group (everything inside the ship moves with it) ─────────────
     this.shipGroup = new Group()
@@ -61,14 +66,18 @@ export class SceneManager {
     // Screen glow follows cockpit
     this.shipGroup.add(screenGlow)
 
-    // Interior fill lights (overhead + back)
-    const interiorFill = new PointLight(0xaabbcc, 0.5, 22)
+    // Interior fill lights — increased for brighter cockpit
+    const interiorFill = new PointLight(0xbbccdd, 0.9, 28)
     interiorFill.position.set(0, 3.0, 7.0)
     this.shipGroup.add(interiorFill)
 
-    const backFill = new PointLight(0x8899aa, 0.3, 18)
+    const backFill = new PointLight(0x99aabb, 0.6, 24)
     backFill.position.set(0, 2.5, 13.0)
     this.shipGroup.add(backFill)
+
+    const frontFill = new PointLight(0x8899cc, 0.5, 12)
+    frontFill.position.set(0, 1.5, 0)
+    this.shipGroup.add(frontFill)
 
     // Cockpit interior
     this.cockpit = new CockpitInterior()
@@ -83,6 +92,14 @@ export class SceneManager {
     this.muzzleLight.position.set(0, 2, -8)
     this.shipGroup.add(this.muzzleLight)
 
+    // Corridor + hangar behind cockpit room
+    this.corridorHangar = new CorridorHangar()
+    this.shipGroup.add(this.corridorHangar.group)
+
+    // Sub-ship docked in hangar
+    this.subship = new SubshipVehicle()
+    this.shipGroup.add(this.subship.group)
+
     this.scene.add(this.shipGroup)
 
     // Space station (in world space, not shipGroup)
@@ -90,6 +107,26 @@ export class SceneManager {
     this.scene.add(this.spaceStation.group)
 
     window.addEventListener('resize', this.onResize.bind(this))
+  }
+
+  isSubshipLaunched = false
+
+  /** Detach sub-ship from shipGroup into world space (preserves world transform). */
+  launchSubship(): void {
+    if (!this.isSubshipLaunched) {
+      this.scene.attach(this.subship.group)
+      this.isSubshipLaunched = true
+    }
+  }
+
+  /** Re-attach sub-ship back to shipGroup at docked position. */
+  dockSubship(): void {
+    if (this.isSubshipLaunched) {
+      this.shipGroup.attach(this.subship.group)
+      this.subship.group.position.set(0, 0, SUBSHIP_OFFSET_Z)
+      this.subship.group.setRotationFromEuler(new Euler(0, 0, 0))
+      this.isSubshipLaunched = false
+    }
   }
 
   render(): void {

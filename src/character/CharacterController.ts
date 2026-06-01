@@ -7,6 +7,7 @@ import {
   Vector3,
 } from 'three'
 import { ROOM, HELM_SEAT_Z, COLLISION_BOXES } from '../render/CockpitRoom.js'
+import { CORRIDOR, HANGAR, CORRIDOR_COLLISION } from '../render/CorridorHangar.js'
 
 export const CHAR_HEIGHT    = 1.58
 export const CHAR_SPEED     = 4.0
@@ -185,7 +186,13 @@ export class CharacterController {
 
   private resolveCollisions(): void {
     const r = CHAR_RADIUS
-    for (const box of COLLISION_BOXES) {
+    const allBoxes = [
+      ...COLLISION_BOXES,
+      ...CORRIDOR_COLLISION,
+      // Sub-ship hull blocks character from clipping through the body
+      { minX: -1.5, maxX: 1.5, minZ: 36.0, maxZ: 43.5 },
+    ]
+    for (const box of allBoxes) {
       const cx = Math.max(box.minX, Math.min(this.position.x, box.maxX))
       const cz = Math.max(box.minZ, Math.min(this.position.z, box.maxZ))
       const dx = this.position.x - cx
@@ -198,8 +205,15 @@ export class CharacterController {
         this.position.z += (dz / dist) * (r - dist)
       }
     }
-    this.position.x = Math.max(ROOM.leftX  + r, Math.min(ROOM.rightX - r, this.position.x))
-    this.position.z = Math.max(ROOM.frontZ + r, Math.min(ROOM.backZ   - r, this.position.z))
+    // Narrow corridor: clamp x tighter when in corridor zone
+    if (this.position.z > CORRIDOR.frontZ && this.position.z < CORRIDOR.backZ) {
+      this.position.x = Math.max(CORRIDOR.leftX + r, Math.min(CORRIDOR.rightX - r, this.position.x))
+    } else if (this.position.z >= HANGAR.frontZ) {
+      this.position.x = Math.max(HANGAR.leftX + r, Math.min(HANGAR.rightX - r, this.position.x))
+    } else {
+      this.position.x = Math.max(ROOM.leftX + r, Math.min(ROOM.rightX - r, this.position.x))
+    }
+    this.position.z = Math.max(ROOM.frontZ + r, Math.min(HANGAR.backZ - r, this.position.z))
   }
 
   placeAtHelm(): void {
@@ -219,5 +233,26 @@ export class CharacterController {
 
   isNearHelm(): boolean {
     return this.position.z < 1.8 && Math.abs(this.position.x) < 1.2
+  }
+
+  /** True when character is standing beside the sub-ship in the hangar */
+  isNearSubship(): boolean {
+    return this.position.z > 34 && this.position.z < 46
+      && Math.abs(this.position.x) > 1.4 && Math.abs(this.position.x) < 3.5
+  }
+
+  /** Place character beside sub-ship after disembarking */
+  placeNearSubship(): void {
+    this.position.set(2.2, CHAR_CENTER_Y, 39)
+    this.isCrouching = false
+    this.velY        = 0
+    this.isGrounded  = true
+    this.facingYaw   = -Math.PI / 2
+    this.mesh.position.copy(this.position)
+    this.mesh.rotation.y = this.facingYaw
+    this.legL.rotation.x = 0
+    this.legR.rotation.x = 0
+    this.armL.rotation.x = 0
+    this.armR.rotation.x = 0
   }
 }

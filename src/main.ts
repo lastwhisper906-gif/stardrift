@@ -1,4 +1,6 @@
-import { Euler, Vector3 } from 'three'
+import { Euler, Quaternion, Vector3 } from 'three'
+import { createSubshipState, updateSubship } from './systems/SubshipSystem.js'
+import type { SubshipState } from './systems/SubshipSystem.js'
 import { AudioSystem } from './audio/AudioSystem.js'
 import { SpaceStation } from './render/SpaceStation.js'
 import { SceneManager } from './render/SceneManager.js'
@@ -44,6 +46,7 @@ const character = new CharacterController()
 scene.shipGroup.add(character.mesh)
 
 const camCtrl = new CameraController(scene.camera, scene.shipGroup)
+camCtrl.setSubshipGroup(scene.subship.group)
 
 // Start in WALKING mode: hide 1st-person arm meshes
 scene.cockpit.setArmsVisible(false)
@@ -71,6 +74,14 @@ hud.setInteractPrompt(false)
 let pilotingTimer = 0
 let nextTriggerDelay = 20
 let gameOver = false
+let subshipLaunched = false
+let subshipState: SubshipState | null = null
+
+// Display-smoothed position/rotation (lerped each frame for buttery movement)
+let dispX = 0, dispY = 0, dispZ = 0
+const dispQuat = new Quaternion()
+const _tgtQuat = new Quaternion()
+const _tgtEuler = new Euler(0, 0, 0, 'YXZ')
 
 function resetGame(): void {
   eventManager.clear()
@@ -92,6 +103,12 @@ function resetGame(): void {
   pilotingTimer    = 0
   nextTriggerDelay = 20
   gameOver         = false
+  subshipLaunched  = false
+  subshipState     = null
+  dispX = 0; dispY = 0; dispZ = 0
+  dispQuat.identity()
+  scene.dockSubship()
+  hud.setLaunchPrompt(false)
   hud.hideEndScreen()
 }
 
@@ -135,7 +152,7 @@ function loop(): void {
     }
   }
 
-  // ── F key: toggle WALKING ↔ PILOTING ────────────────────────────────────
+  // ── F key: toggle WALKING ↔ PILOTING / SUB-SHIP ─────────────────────────
   if (keyboard.consumeJustPressed('KeyF')) {
     if (mode === 'walking' && character.isNearHelm()) {
       camCtrl.setMode('piloting')
@@ -143,6 +160,22 @@ function loop(): void {
       character.mesh.visible = false
       scene.cockpit.setArmsVisible(true)
       hud.setInteractPrompt(false)
+    } else if (mode === 'walking' && character.isNearSubship()) {
+      camCtrl.setMode('subship_piloting')
+      character.mesh.visible = false
+      hud.setInteractPrompt(false)
+      scene.subship.setExteriorVisible(false)   // hide hull so pilot can see out
+      scene.subship.cockpitInterior.setArmsVisible(true)
+      if (!subshipLaunched) hud.setLaunchPrompt(true)
+    } else if (mode === 'subship_piloting') {
+      // Exit sub-ship
+      character.placeNearSubship()
+      camCtrl.setMode('walking')
+      camCtrl.setWalkYaw(-Math.PI / 2)
+      character.mesh.visible = true
+      scene.subship.setExteriorVisible(true)
+      scene.subship.cockpitInterior.setArmsVisible(false)
+      hud.setLaunchPrompt(false)
     } else if (mode === 'piloting' || mode === 'exterior') {
       character.placeAtHelm()
       camCtrl.setMode('walking')
@@ -151,6 +184,16 @@ function loop(): void {
       character.mesh.visible = true
       scene.cockpit.setArmsVisible(false)
     }
+  }
+
+  // ── E key: launch sub-ship when seated and not yet launched ─────────────
+  if (mode === 'subship_piloting' && !subshipLaunched && keyboard.consumeJustPressed('KeyE')) {
+    subshipLaunched = true
+    const worldPos = new Vector3()
+    scene.subship.group.getWorldPosition(worldPos)
+    subshipState = createSubshipState([worldPos.x, worldPos.y, worldPos.z])
+    scene.launchSubship()
+    hud.setLaunchPrompt(false)
   }
 
   // ── Input dispatch ───────────────────────────────────────────────────────
@@ -162,6 +205,24 @@ function loop(): void {
     room.setState({ ship: physShip, tick: state.tick + 1 })
     audio.setThrottle(physShip.throttle)
     if (mode === 'piloting') scene.cockpit.update(pilotInput, physShip, dt)
+  } else if (mode === 'subship_piloting') {
+    if (subshipLaunched && subshipState) {
+      // Sub-ship has independent physics
+      const subInput = keyboard.getPilotInput()
+      subshipState = updateSubship(subshipState, subInput, dt)
+      scene.subship.group.position.set(...subshipState.position)
+      scene.subship.group.rotation.set(
+        subshipState.rotation[0], subshipState.rotation[1], subshipState.rotation[2], 'YXZ',
+      )
+      audio.setThrottle(subshipState.throttle)
+    } else {
+      // Docked: main ship idles (physics decay, no player input)
+      audio.setThrottle(0)
+    }
+    // Main ship drifts regardless
+    const st = room.getState()
+    const physShip = updatePhysics(st.ship, dt)
+    room.setState({ ship: physShip, tick: st.tick + 1 })
   } else {
     audio.setThrottle(0)
     // Character movement
@@ -191,17 +252,18 @@ function loop(): void {
     }
     hud.setO2Prompt(nearO2 && room.getState().ship.oxygen < 100)
 
-    // Entrance door animation
-    cockpitRoom.update(character.position.z, dt, totalTime)
+    // Entrance door animation (open when alien invading or character in corridor)
+    const isAlienEvent = eventManager.getActiveEventId() === 'alien'
+    cockpitRoom.update(isAlienEvent, character.position.z > 14, dt, totalTime)
 
     const state = room.getState()
     const physShip = updatePhysics(state.ship, dt)
     room.setState({ ship: physShip, tick: state.tick + 1 })
   }
 
-  // ── Events (only trigger when someone is at the helm) ───────────────────
+  // ── Events (only trigger when piloting or sub-ship launched) ────────────
   const phase = room.getState().phase
-  if ((mode === 'piloting' || mode === 'exterior') && phase === 'PILOTING') {
+  if ((mode === 'piloting' || mode === 'exterior' || (mode === 'subship_piloting' && subshipLaunched)) && phase === 'PILOTING') {
     pilotingTimer += dt
     if (pilotingTimer >= nextTriggerDelay) {
       pilotingTimer    = 0
@@ -216,7 +278,7 @@ function loop(): void {
       else if (hull < 40)     eventId = 'eva'        // EVA only when hull critical
       eventManager.trigger(eventId)
     }
-    // Player fires at alien (Space key while piloting)
+    // Player fires at alien (Space key while piloting or sub-ship)
     if (keyboard.consumeJustPressed('Space') && eventManager.getActiveEventId() === 'alien') {
       const state = room.getState()
       const [rx, ry] = state.ship.rotation
@@ -241,18 +303,31 @@ function loop(): void {
   }
   eventManager.update(dt)
 
-  // ── Sync ship group (camera follows automatically) ───────────────────────
+  // ── Hangar hatch animation ───────────────────────────────────────────────
+  scene.corridorHangar.update(subshipLaunched, dt)
+
+  // ── Sync ship group (lerped for smooth movement) ─────────────────────────
   const ship = room.getState().ship
   const [rx, ry, rz] = ship.rotation
-  scene.shipGroup.position.set(...ship.position as [number, number, number])
-  scene.shipGroup.setRotationFromEuler(new Euler(rx, ry, rz, 'YXZ'))
+  // Lerp factor: high enough for responsiveness, low enough to smooth out jitter
+  const posLerp = Math.min(1, 14 * dt)
+  const rotLerp = Math.min(1, 10 * dt)
+  dispX += (ship.position[0] - dispX) * posLerp
+  dispY += (ship.position[1] - dispY) * posLerp
+  dispZ += (ship.position[2] - dispZ) * posLerp
+  scene.shipGroup.position.set(dispX, dispY, dispZ)
+  _tgtEuler.set(rx, ry, rz)
+  _tgtQuat.setFromEuler(_tgtEuler)
+  dispQuat.slerp(_tgtQuat, rotLerp)
+  scene.shipGroup.setRotationFromQuaternion(dispQuat)
 
   // ── Camera update ────────────────────────────────────────────────────────
   camCtrl.update(character, dt)
 
   // ── HUD ──────────────────────────────────────────────────────────────────
-  const nearHelm = mode === 'walking' && character.isNearHelm()
-  hud.setInteractPrompt(nearHelm)
+  const nearHelm    = mode === 'walking' && character.isNearHelm()
+  const nearSubship = mode === 'walking' && character.isNearSubship()
+  hud.setInteractPrompt(nearHelm || nearSubship)
 
   // Impact audio + camera shake when hull decreases
   if (ship.hull < prevHull - 0.5) {
@@ -280,20 +355,20 @@ function loop(): void {
 
   if (activeEvent === 'alien') {
     hud.setAlienWarning(true, alienEvent.getDistanceToShip(), alienEvent.getHealth())
-    const inRange = (mode === 'piloting' || mode === 'exterior') && alienEvent.getDistanceToShip() < 120
+    const inRange = (mode === 'piloting' || mode === 'exterior' || mode === 'subship_piloting') && alienEvent.getDistanceToShip() < 120
     hud.setCombatPrompt(inRange)
     hud.setStationWaypoint(false)
   } else {
     hud.setAlienWarning(false)
     hud.setCombatPrompt(false)
     // Show station waypoint when not in event
-    const showStation = (mode === 'piloting' || mode === 'exterior') && !gameOver
+    const showStation = (mode === 'piloting' || mode === 'exterior' || mode === 'subship_piloting') && !gameOver
     const dockReady   = distToStation < 35 && shipSpeed < 6
     hud.setStationWaypoint(showStation, distToStation, dockReady)
   }
 
   // ── Mode indicator ────────────────────────────────────────────────────────
-  hud.setMode(mode === 'exterior' ? 'EXT VIEW' : mode)
+  hud.setMode(mode === 'exterior' ? 'EXT VIEW' : mode === 'subship_piloting' ? 'SUB-SHIP' : mode)
 
   // ── Mission progress + docking check ────────────────────────────────────
   const [px, py, pz]   = ship.position

@@ -3,7 +3,7 @@ import type { StationHandler } from './StationHandler.js'
 import type { StationInput } from '../input/InputTypes.js'
 import type { GameState } from '../state/GameState.js'
 
-const VERTICAL_ACCEL = 5  // units/s²
+const VERTICAL_ACCEL = 50  // units/s² — terminal velocity ~20 u/s
 
 export const verticalHandler: StationHandler = {
   station: Station.Vertical,

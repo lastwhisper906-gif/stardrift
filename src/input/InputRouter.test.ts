@@ -6,7 +6,7 @@ import { throttleHandler } from '../stations/ThrottleHandler.js'
 import { createInitialGameState } from '../state/GameState.js'
 import type { RawInput } from './InputTypes.js'
 
-const ZERO_INPUT: RawInput = { yaw: 0, pitch: 0, roll: 0, throttleDelta: 0, verticalDelta: 0 }
+const ZERO_INPUT: RawInput = { yaw: 0, pitch: 0, roll: 0, throttleDelta: 0, verticalDelta: 0, boost: false }
 const DT = 0.016
 
 describe('InputRouter', () => {

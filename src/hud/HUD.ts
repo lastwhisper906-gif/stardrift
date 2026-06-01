@@ -28,6 +28,7 @@ export class HUD {
   private readonly warnTextEl: HTMLElement
   private readonly damageOverlay: HTMLElement
   private interactPrompt!: HTMLElement
+  private launchPrompt!: HTMLElement
   private repairPrompt!: HTMLElement
   private alienPanel!: HTMLElement
   private alienDistEl!: HTMLElement
@@ -106,6 +107,20 @@ export class HUD {
     `
     interactPrompt.textContent = '[F]  SIT AT HELM'
     this.root.appendChild(interactPrompt)
+
+    // ── Launch prompt (shown when inside sub-ship, not yet launched) ──────
+    const launchPrompt = document.createElement('div')
+    launchPrompt.style.cssText = `
+      position:absolute;bottom:68px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(25,10,0,0.70);
+      border:1px solid rgba(255,140,0,0.50);
+      padding:8px 22px;border-radius:3px;
+      color:#ffaa00;font-size:13px;letter-spacing:2px;
+      text-shadow:0 0 10px #ff8800;
+    `
+    launchPrompt.textContent = '[E]  출격  LAUNCH'
+    this.root.appendChild(launchPrompt)
 
     // ── Repair prompt (secondary prompt above interact) ───────────────────
     const repairPrompt = document.createElement('div')
@@ -316,6 +331,7 @@ export class HUD {
     this.titleScreen    = titleScreen
     this.combatPrompt   = combatPrompt
     this.damageOverlay  = dmg
+    this.launchPrompt   = launchPrompt
   }
 
   update(ship: ShipState, phase: GamePhase, threatDist?: number, eventId = 'asteroid'): void {
@@ -363,6 +379,10 @@ export class HUD {
 
   setInteractPrompt(show: boolean): void {
     this.interactPrompt.style.display = show ? 'block' : 'none'
+  }
+
+  setLaunchPrompt(show: boolean): void {
+    this.launchPrompt.style.display = show ? 'block' : 'none'
   }
 
   setRepairPrompt(show: boolean, hull: number): void {
