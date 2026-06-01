@@ -8,6 +8,7 @@ import {
   PointLight,
   SphereGeometry,
 } from 'three'
+import type { RawInput } from '../input/InputTypes.js'
 
 function mat(
   color: number, metalness = 0.55, roughness = 0.45, emissive = 0, ei = 0,
@@ -46,6 +47,12 @@ export class SubshipVehicle {
   readonly cockpitInterior: { setArmsVisible(v: boolean): void }
   readonly helmLocalZ: number
 
+  private hotasL!: Group
+  private hotasR!: Group
+  private hotasYaw   = 0
+  private hotasPitchL = 0
+  private hotasPitchR = 0
+
   constructor() {
     this.group = new Group()
     this.group.position.z = SUBSHIP_OFFSET_Z
@@ -59,6 +66,18 @@ export class SubshipVehicle {
 
     this.cockpitInterior = { setArmsVisible(_v: boolean) {} }
     this.helmLocalZ = SUBSHIP_ROOM.helmZ
+  }
+
+  update(raw: RawInput, dt: number): void {
+    const MAX = Math.PI / 7
+    const s   = Math.min(1, dt * 12)
+    this.hotasYaw    += (raw.yaw           * MAX - this.hotasYaw)    * s
+    this.hotasPitchL += (raw.throttleDelta * MAX - this.hotasPitchL) * s
+    this.hotasPitchR += (raw.pitch         * MAX - this.hotasPitchR) * s
+    this.hotasL.rotation.z = -this.hotasYaw
+    this.hotasL.rotation.x =  this.hotasPitchL
+    this.hotasR.rotation.z = -this.hotasYaw
+    this.hotasR.rotation.x =  this.hotasPitchR
   }
 
   setExteriorVisible(v: boolean): void {
@@ -150,24 +169,22 @@ export class SubshipVehicle {
     const col = new Mesh(new CylinderGeometry(0.055, 0.070, 0.42, 8), metal)
     col.position.set(0, fy + 0.21, -1.50); g.add(col)
 
-    // ── Windshield bulkhead at z = -3.76 ─────────────────────────────────
-    // Opening x=(-0.90..0.90), y=(-0.12..0.80)
+    // ── Windshield bulkhead at z = -3.76 — wide opening for 100° FOV ─────
+    // Opening x=(-1.00..1.00) = 2.0 m wide, y=(-0.30..0.95) = 1.25 m tall
     const wz = fz + 0.24  // -3.76
-    b(2.20, cy - 0.80,  0.24, frame, 0,  (0.80 + cy) / 2,  wz)  // top
-    b(2.20, 0.48,       0.24, frame, 0,  fy + 0.24,         wz)  // sill
-    b(0.30, 0.92,       0.24, frame, -1.05, 0.34,            wz)  // left pillar
-    b(0.30, 0.92,       0.24, frame,  1.05, 0.34,            wz)  // right pillar
+    b(2.20, cy - 0.95, 0.20, frame, 0,  (0.95 + cy) / 2,  wz)  // top — 0.25 m high
+    b(2.20, 0.22,      0.20, frame, 0,  fy + 0.19,         wz)  // sill — top at y=-0.30
+    b(0.12, 1.25,      0.20, frame, -1.06, 0.325,           wz)  // left pillar — thin
+    b(0.12, 1.25,      0.20, frame,  1.06, 0.325,           wz)  // right pillar
     for (const sx of [-1, 1] as const) {
-      b(0.016, 0.88, 0.04, gBlue, sx * 0.90, 0.34, wz + 0.12)
+      b(0.016, 1.20, 0.04, gBlue, sx * 1.00, 0.325, wz + 0.10)  // inner glow
     }
-    b(1.80, 0.016, 0.04, gBlue, 0,  0.80, wz + 0.12)
-    b(1.80, 0.016, 0.04, gBlue, 0, -0.12, wz + 0.12)
+    b(1.96, 0.016, 0.04, gBlue, 0,  0.95, wz + 0.10)
+    b(1.96, 0.016, 0.04, gBlue, 0, -0.30, wz + 0.10)
 
-    // ── Side cockpit walls  z = -2.55 to -3.76 (visible in 92° FOV) ──────
+    // ── Side cockpit walls — thin LED strips only ─────────────────────────
     for (const sx of [-1, 1] as const) {
-      b(0.08, 1.00, 1.20, panel, sx * 1.14,  0.10, -3.16)
-      // LED strip on inner edge
-      b(0.012, 0.80, 0.020, gBlue, sx * 1.10,  0.10, -3.60)
+      b(0.012, 0.80, 0.020, gBlue, sx * 1.10, 0.10, -3.60)
     }
 
     // ── Dashboard body — front face at z = -2.72 (0.72 m ahead) ─────────
@@ -211,27 +228,38 @@ export class SubshipVehicle {
       led.position.set(-0.10 + i * 0.05, -0.08, -2.78); g.add(led)
     })
 
-    // ── HOTAS armrests at z = -2.55 (0.55 m ahead of camera) ────────────
-    // Armrest platform top at y = fy+0.46 = -0.14 — well below camera at y=0.30
+    // ── HOTAS armrests at z = -2.55 — animated via hotasL / hotasR groups ──
     for (const sx of [-1, 1] as const) {
-      const gx  = sx * 0.46
-      const gy  = fy + 0.46   // = -0.14  (below camera eye)
-      const gz  = -2.58
-      // Armrest body
+      const gx = sx * 0.46
+      const gy = fy + 0.46   // = -0.14
+      const gz = -2.58
+      // Static armrest platform
       b(0.26, 0.055, 0.38, panel, gx, gy - 0.028, gz)
-      b(0.10, 0.075, 0.10, metal, gx, gy + 0.040, gz - 0.04)  // stick base
+
+      // Animated stick group — pivot at stick base
+      const stickGroup = new Group()
+      stickGroup.position.set(gx, gy + 0.040, gz - 0.04)
+      g.add(stickGroup)
+
+      const sb = (w: number, h: number, d: number, m: MeshStandardMaterial, x: number, y: number, z: number) => {
+        const mesh = new Mesh(new BoxGeometry(w, h, d), m)
+        mesh.position.set(x, y, z); stickGroup.add(mesh)
+      }
+      // Stick base
+      sb(0.10, 0.075, 0.10, metal, 0, 0, 0)
       // Shaft
       const shaft = new Mesh(new CylinderGeometry(0.016, 0.022, 0.18, 8), metal)
-      shaft.position.set(gx, gy + 0.13, gz - 0.03)
-      shaft.rotation.x = 0.15; g.add(shaft)
+      shaft.position.set(0, 0.09, 0.01); shaft.rotation.x = 0.15; stickGroup.add(shaft)
       // Grip
-      b(0.046, 0.13, 0.050, grip, gx, gy + 0.24, gz - 0.025)
+      sb(0.046, 0.13, 0.050, grip,  0, 0.20, 0.015)
       // Trigger
-      b(0.016, 0.036, 0.052, grip, gx, gy + 0.20, gz - 0.05)
+      sb(0.016, 0.036, 0.052, grip, 0, 0.16, -0.01)
       // Top action button
-      const fire = new Mesh(new SphereGeometry(0.014, 7, 5),
-        mat(0x1a3355, 0.1, 0.4, 0x0a2244, 0.80))
-      fire.position.set(gx, gy + 0.31, gz - 0.016); g.add(fire)
+      const fire = new Mesh(new SphereGeometry(0.014, 7, 5), mat(0x1a3355, 0.1, 0.4, 0x0a2244, 0.80))
+      fire.position.set(0, 0.27, 0); stickGroup.add(fire)
+
+      if (sx < 0) this.hotasL = stickGroup
+      else        this.hotasR = stickGroup
     }
 
     // ── Center console tunnel — top at y = fy+0.50 = -0.10 (below camera) ─

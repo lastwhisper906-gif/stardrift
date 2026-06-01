@@ -6,7 +6,7 @@ import { HANGAR } from '../render/CorridorHangar.js'
 
 export type CameraMode = 'walking' | 'piloting' | 'exterior' | 'subship_piloting'
 
-const PILOT_EYE      = new Vector3(0, 0.08, 0.10)
+const PILOT_EYE      = new Vector3(0, 0.22, 0.08)
 const SUBSHIP_EYE    = new Vector3(0, 0.30, 37.8)   // fallback when group not set
 const SUBSHIP_LOCAL  = new Vector3(0, 0.30, -2.0)   // seated eye height, dashboard below
 const EXT_POS    = new Vector3(0, 14, 38)
@@ -153,8 +153,7 @@ export class CameraController {
     if (mode === 'walking') {
       this.posReady = false
     }
-    // Wide FOV for subship (sports-car feel) — narrow for main cockpit 1st-person
-    this.camera.fov = mode === 'subship_piloting' ? 92 : 65
+    this.camera.fov = mode === 'subship_piloting' ? 100 : 85
     this.camera.updateProjectionMatrix()
     this.mode = mode
   }

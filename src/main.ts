@@ -206,9 +206,9 @@ function loop(): void {
     audio.setThrottle(physShip.throttle)
     if (mode === 'piloting') scene.cockpit.update(pilotInput, physShip, dt)
   } else if (mode === 'subship_piloting') {
+    const subInput = keyboard.getPilotInput()
+    scene.subship.update(subInput, dt)   // animate HOTAS sticks
     if (subshipLaunched && subshipState) {
-      // Sub-ship has independent physics
-      const subInput = keyboard.getPilotInput()
       subshipState = updateSubship(subshipState, subInput, dt)
       scene.subship.group.position.set(...subshipState.position)
       scene.subship.group.rotation.set(
@@ -216,7 +216,6 @@ function loop(): void {
       )
       audio.setThrottle(subshipState.throttle)
     } else {
-      // Docked: main ship idles (physics decay, no player input)
       audio.setThrottle(0)
     }
     // Main ship drifts regardless
