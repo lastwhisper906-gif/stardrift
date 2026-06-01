@@ -162,9 +162,9 @@ export class CockpitInterior {
     tier2.rotation.x = -0.55
     this.group.add(tier2)
 
-    // Upper vertical panel (stands up like a movie spaceship panel)
+    // Upper vertical panel — lowered so top edge stays below camera eye (y=0.22)
     const tier3 = new Mesh(new BoxGeometry(4.0, 0.04, 0.45), panelMat)
-    tier3.position.set(0,  0.08, -0.86)
+    tier3.position.set(0, -0.02, -0.86)
     tier3.rotation.x = -0.82
     this.group.add(tier3)
 

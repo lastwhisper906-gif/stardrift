@@ -193,9 +193,9 @@ export class SubshipVehicle {
     dashBody.rotation.x = -0.16
     g.add(dashBody)
 
-    // Dashboard upper angled lip
+    // Dashboard upper angled lip — lowered so back edge stays below camera eye (y=0.30)
     const lip = new Mesh(new BoxGeometry(2.06, 0.05, 0.30), panel)
-    lip.position.set(0, 0.25, -2.94)
+    lip.position.set(0, 0.10, -2.94)
     lip.rotation.x = -0.50
     g.add(lip)
 
