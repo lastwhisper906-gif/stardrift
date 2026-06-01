@@ -169,64 +169,26 @@ export class SubshipVehicle {
     const col = new Mesh(new CylinderGeometry(0.055, 0.070, 0.42, 8), metal)
     col.position.set(0, fy + 0.21, -1.50); g.add(col)
 
-    // ── Windshield bulkhead at z = -3.76 — wide opening for 100° FOV ─────
-    // Opening x=(-1.00..1.00) = 2.0 m wide, y=(-0.30..0.95) = 1.25 m tall
+    // ── Windshield: thin frame + transparent glass ────────────────────────
     const wz = fz + 0.24  // -3.76
-    b(2.20, cy - 0.95, 0.20, frame, 0,  (0.95 + cy) / 2,  wz)  // top — 0.25 m high
-    b(2.20, 0.22,      0.20, frame, 0,  fy + 0.19,         wz)  // sill — top at y=-0.30
-    b(0.12, 1.25,      0.20, frame, -1.06, 0.325,           wz)  // left pillar — thin
-    b(0.12, 1.25,      0.20, frame,  1.06, 0.325,           wz)  // right pillar
-    for (const sx of [-1, 1] as const) {
-      b(0.016, 1.20, 0.04, gBlue, sx * 1.00, 0.325, wz + 0.10)  // inner glow
-    }
-    b(1.96, 0.016, 0.04, gBlue, 0,  0.95, wz + 0.10)
-    b(1.96, 0.016, 0.04, gBlue, 0, -0.30, wz + 0.10)
-
-    // ── Side cockpit walls — thin LED strips only ─────────────────────────
-    for (const sx of [-1, 1] as const) {
-      b(0.012, 0.80, 0.020, gBlue, sx * 1.10, 0.10, -3.60)
-    }
-
-    // ── Dashboard body — front face at z = -2.72 (0.72 m ahead) ─────────
-    const dashBody = new Mesh(new BoxGeometry(2.10, 0.60, 0.60), panel)
-    dashBody.position.set(0, -0.08, -3.02)
-    dashBody.rotation.x = -0.16
-    g.add(dashBody)
-
-    // Dashboard upper angled lip — lowered so back edge stays below camera eye (y=0.30)
-    const lip = new Mesh(new BoxGeometry(2.06, 0.05, 0.30), panel)
-    lip.position.set(0, 0.10, -2.94)
-    lip.rotation.x = -0.50
-    g.add(lip)
-
-    // ── Main MFD — large, bright, central ────────────────────────────────
-    const mfdMesh = new Mesh(new BoxGeometry(1.10, 0.38, 0.016), mfd)
-    mfdMesh.position.set(0, 0.15, -2.88)
-    mfdMesh.rotation.x = -0.16
-    g.add(mfdMesh)
-    ;([
-      [1.10, 0.014,  0,     0.19],
-      [1.10, 0.014,  0,    -0.19],
-      [0.014, 0.38,  0.55,  0  ],
-      [0.014, 0.38, -0.55,  0  ],
-    ] as [number,number,number,number][]).forEach(([bw, bh, bx, by]) => {
-      const bd = new Mesh(new BoxGeometry(bw, bh, 0.018), border)
-      bd.position.set(bx, by + 0.15, -2.868); bd.rotation.x = -0.16; g.add(bd)
+    const glassMat = new MeshStandardMaterial({
+      color: 0x4477aa,
+      transparent: true,
+      opacity: 0.09,
+      metalness: 0.0,
+      roughness: 0.02,
+      side: 2,       // DoubleSide
+      depthWrite: false,
     })
-
-    // Side sub-displays
-    for (const sx of [-1, 1] as const) {
-      const sub = new Mesh(new BoxGeometry(0.42, 0.26, 0.014),
-        mat(0x001430, 0.05, 0.2, 0x002888, 0.80))
-      sub.position.set(sx * 0.78, 0.15, -2.87)
-      sub.rotation.x = -0.16; g.add(sub)
-    }
-
-    // LED row
-    ;([0x00ff55, 0x00ff55, 0xffaa00, 0x0088ff, 0xff4400] as number[]).forEach((c, i) => {
-      const led = new Mesh(new BoxGeometry(0.026, 0.026, 0.014), mat(c, 0.1, 0.3, c, 0.90))
-      led.position.set(-0.10 + i * 0.05, -0.08, -2.78); g.add(led)
-    })
+    // Sill and thin frame
+    b(2.20, 0.22,      0.12, frame, 0,  fy + 0.19,         wz)  // sill
+    b(2.20, cy - 0.95, 0.12, frame, 0,  (0.95 + cy) / 2,   wz)  // top
+    b(0.08, 1.25,      0.12, frame, -1.06, 0.325,            wz)  // left pillar
+    b(0.08, 1.25,      0.12, frame,  1.06, 0.325,            wz)  // right pillar
+    // Glass pane
+    const glassPane = new Mesh(new PlaneGeometry(2.10, 1.25), glassMat)
+    glassPane.position.set(0, 0.325, wz)
+    g.add(glassPane)
 
     // ── HOTAS armrests at z = -2.55 — animated via hotasL / hotasR groups ──
     for (const sx of [-1, 1] as const) {
@@ -261,20 +223,6 @@ export class SubshipVehicle {
       if (sx < 0) this.hotasL = stickGroup
       else        this.hotasR = stickGroup
     }
-
-    // ── Center console tunnel — top at y = fy+0.50 = -0.10 (below camera) ─
-    b(0.26, 0.50, 1.10, mat(0x0d1020, 0.50, 0.60), 0, fy + 0.25, -3.10)
-    b(0.24, 0.034, 0.90, panel, 0, fy + 0.51, -3.10)
-    b(0.18, 0.010, 0.80, gBlue, 0, fy + 0.55, -3.10)
-
-    // ── Overhead indicator strip (visible looking slightly up) ────────────
-    const ovhd = new Mesh(new BoxGeometry(1.80, 0.08, 0.80),
-      mat(0x0a0f1a, 0.50, 0.60))
-    ovhd.position.set(0, cy - 0.12, -3.00); g.add(ovhd)
-    // Overhead MFD strip
-    const ovMfd = new Mesh(new BoxGeometry(1.50, 0.055, 0.55),
-      mat(0x001022, 0.05, 0.2, 0x001a33, 0.80))
-    ovMfd.position.set(0, cy - 0.15, -3.10); g.add(ovMfd)
 
     // ── Lighting ──────────────────────────────────────────────────────────
     const fill = new PointLight(0x6688cc, 1.50, 7.0)

@@ -181,169 +181,72 @@ export class CockpitRoom {
     this.group.add(conduit)
   }
 
-  // Sci-fi oval/arched panoramic window with dome protrusion ────────────────
+  // Clean aircraft-nose windshield — transparent glass + minimal frame ────────
   private buildFrontWindow(): void {
-    const z   = ROOM.frontZ   // -1.5
-    const fh  = ROOM.ceilY - ROOM.floorY   // 4.5
-    const cmy = (ROOM.floorY + ROOM.ceilY) / 2
-    const W   = ROOM.rightX - ROOM.leftX   // 9
-
-    const struct = mat(0x080810, 0.60, 0.60)
-    const glow   = mat(0x001020, 0.1, 0.2, 0x0055cc, 1.0)
-
-    // ── Forward dome/bow protrusion (submarine nose-cone effect) ─────────
-    // A cluster of angled structural panels that "push" the cockpit nose
-    // outward in a rounded shape — visible as a convex bow from both inside
-    // and outside.
-    const domeDepth = 1.6   // how far the dome projects beyond z = ROOM.frontZ
-    const domeZ = z - domeDepth   // = -3.1 (apex of protrusion)
-    const domeMat = mat(0x080810, 0.65, 0.55)
-
-    // Curved bow ribs — arranged radially around the center like a ship's bow
-    const bowAngles = [-0.62, -0.38, -0.18, 0, 0.18, 0.38, 0.62]  // Z-rotation angles
-    bowAngles.forEach((ang, i) => {
-      const sign = i < 3 ? -1 : i > 3 ? 1 : 0
-      const xOff = sign * (Math.abs(ang) * 2.8)
-      const zOff = -(1 - Math.cos(ang)) * domeDepth * 1.4
-      const rib  = new Mesh(new BoxGeometry(0.12, fh, 0.14), domeMat)
-      rib.position.set(xOff, cmy, z + zOff)
-      rib.rotation.y = ang * 0.45
-      this.group.add(rib)
+    const z = ROOM.frontZ   // -1.5
+    const W = ROOM.rightX - ROOM.leftX   // 9.0
+    const frameMat = mat(0x0a0a16, 0.55, 0.60)
+    const glow     = mat(0x001020, 0.1, 0.2, 0x0055cc, 0.85)
+    const glassMat = new MeshStandardMaterial({
+      color: 0x4477aa,
+      transparent: true,
+      opacity: 0.09,
+      metalness: 0.0,
+      roughness: 0.02,
+      side: 2,       // DoubleSide = 2
+      depthWrite: false,
     })
-    // Top dome cap (curved upper panels)
-    for (let i = 0; i < 5; i++) {
-      const t    = (i / 4) * Math.PI
-      const xOff = -Math.cos(t) * 3.2
-      const zOff = -Math.sin(t) * domeDepth * 0.7
-      const cap  = new Mesh(new BoxGeometry(1.6, 0.12, 0.14), domeMat)
-      cap.position.set(xOff, ROOM.ceilY, z + zOff)
-      cap.rotation.z = (t - Math.PI / 2) * 0.3
-      this.group.add(cap)
-    }
-    // Bottom dome cap
-    for (let i = 0; i < 5; i++) {
-      const t    = (i / 4) * Math.PI
-      const xOff = -Math.cos(t) * 3.2
-      const zOff = -Math.sin(t) * domeDepth * 0.7
-      const cap  = new Mesh(new BoxGeometry(1.6, 0.12, 0.14), domeMat)
-      cap.position.set(xOff, ROOM.floorY, z + zOff)
-      cap.rotation.z = -(t - Math.PI / 2) * 0.3
-      this.group.add(cap)
-    }
-    // Center apex strut
-    const apex = new Mesh(new BoxGeometry(0.18, fh, 0.18), domeMat)
-    apex.position.set(0, cmy, domeZ + 0.2)
-    this.group.add(apex)
-    const apexGlow = new Mesh(new BoxGeometry(0.06, fh * 0.85, 0.04), glow)
-    apexGlow.position.set(0, cmy, domeZ + 0.29)
-    this.group.add(apexGlow)
 
-    // ── Deep side columns (submarine porthole effect — 1.2 m thick) ────────
-    const frameDepth = 1.20   // how far the frame juts INTO the room
-    for (const sx of [-1, 1] as const) {
-      // Outer face column (at front wall z=-1.5)
-      const colFront = new Mesh(new BoxGeometry(0.55, fh, 0.10), struct)
-      colFront.position.set(sx * 4.225, cmy, z + 0.05)
-      this.group.add(colFront)
-
-      // Deep jamb (extends from front wall back into room)
-      const jamb = new Mesh(new BoxGeometry(0.55, fh, frameDepth), struct)
-      jamb.position.set(sx * 4.225, cmy, z + frameDepth / 2)
-      this.group.add(jamb)
-
-      // Inner edge — LED reveal strip
-      const led = new Mesh(new BoxGeometry(0.020, fh * 0.70, 0.04), glow)
-      led.position.set(sx * 3.96, cmy, z + frameDepth + 0.02)
-      this.group.add(led)
-
-      // Inner face panel (visible from inside the room)
-      const innerPanel = new Mesh(new BoxGeometry(0.55, fh, 0.08), mat(0x0c0c1c, 0.5, 0.7))
-      innerPanel.position.set(sx * 4.225, cmy, z + frameDepth + 0.04)
-      this.group.add(innerPanel)
-    }
-
-    // ── Bottom sill (deep, submarine-style) ──────────────────────────────
-    const sillH    = -0.2 - ROOM.floorY
-    const sillDepth = 1.20
-    const sill  = new Mesh(new BoxGeometry(W, sillH, sillDepth), struct)
-    sill.position.set(0, ROOM.floorY + sillH / 2, z + sillDepth / 2)
+    // ── Floor sill (solid — floor transitions to glass here) ─────────────
+    const sillH = ROOM.floorY + 0.9   // 0.9 m above floor → glass starts at y=-0.2
+    const sill  = new Mesh(new BoxGeometry(W, sillH, 0.55), frameMat)
+    sill.position.set(0, ROOM.floorY + sillH / 2, z + 0.28)
     this.group.add(sill)
 
-    // ── Oval/elliptical top arch (Interstellar-style curved canopy) ───────
-    // Wider arch: from x=±4.0 at y=1.6, peaking at y=3.2 at x=0
-    const archBaseY = 1.6
-    const archPeakY = ROOM.ceilY - 0.15   // ~3.25
-    const archHalfW = 4.00                 // wider than before (was 3.70)
-    const archRiseH = archPeakY - archBaseY   // ~1.65
+    // ── Thin side pillars ─────────────────────────────────────────────────
+    const glassBot = ROOM.floorY + sillH   // -0.2
+    const glassTop = ROOM.ceilY - 0.20     //  3.2
+    const glassH   = glassTop - glassBot   //  3.4
+    const glassCY  = (glassBot + glassTop) / 2   // 1.5
 
-    // Fill the remaining rectangular wall above arch (corners above the ellipse)
-    // We fill with angled pieces that block the corner triangles
-    const N_ARCH = 16  // arch segments
-    const archDepth = 1.20   // same depth as side columns for consistency
-    for (let i = 0; i < N_ARCH; i++) {
-      const t0 = (i / N_ARCH) * Math.PI
-      const t1 = ((i + 1) / N_ARCH) * Math.PI
-      const x0 = -archHalfW * Math.cos(t0), y0 = archBaseY + archRiseH * Math.sin(t0)
-      const x1 = -archHalfW * Math.cos(t1), y1 = archBaseY + archRiseH * Math.sin(t1)
-      const mx = (x0 + x1) / 2, my = (y0 + y1) / 2
-      const dx = x1 - x0, dy = y1 - y0
-      const segLen = Math.sqrt(dx * dx + dy * dy)
-      const angle  = Math.atan2(dy, dx)
-
-      // Deep arch rib (extends into room)
-      const rib = new Mesh(new BoxGeometry(segLen + 0.02, 0.12, archDepth), struct)
-      rib.position.set(mx, my, z + archDepth / 2)
-      rib.rotation.z = angle
-      this.group.add(rib)
-
-      // Inner edge glow strip (at back face of arch rib, facing pilot)
-      const ribGlow = new Mesh(new BoxGeometry(segLen, 0.025, 0.04), glow)
-      ribGlow.position.set(mx, my, z + archDepth + 0.02)
-      ribGlow.rotation.z = angle
-      this.group.add(ribGlow)
-    }
-
-    // ── Fill corner "triangles" above arch (solid wall outside ellipse) ───
-    // Use a fine grid of small boxes filling the area between ellipse top and ceiling
-    for (let xi = 0; xi < 14; xi++) {
-      for (const sx of [-1, 1] as const) {
-        const xFrac = xi / 14
-        const cx = sx * (archHalfW + (4.5 - archHalfW) * 0 + archHalfW * xFrac)
-        // Ellipse y at this x
-        const sinVal = Math.sqrt(Math.max(0, 1 - (cx / archHalfW) ** 2))
-        const archY  = archBaseY + archRiseH * sinVal
-        const fillH  = ROOM.ceilY - archY
-        if (fillH < 0.05) continue
-        const fill = new Mesh(new BoxGeometry(0.56, fillH, 0.38), struct)
-        fill.position.set(cx, archY + fillH / 2, z + 0.19)
-        this.group.add(fill)
-      }
-    }
-    // Full-width top strip near ceiling (above all arch points)
-    const topStrip = new Mesh(new BoxGeometry(W, ROOM.ceilY - archPeakY, 0.38), struct)
-    topStrip.position.set(0, archPeakY + (ROOM.ceilY - archPeakY) / 2, z + 0.19)
-    this.group.add(topStrip)
-
-    // ── Frame glow on window edges ────────────────────────────────────────
-    // Bottom glow
-    const botGlow = new Mesh(new BoxGeometry(8.0, 0.022, 0.04), glow)
-    botGlow.position.set(0, -0.185, z + 0.38)
-    this.group.add(botGlow)
-
-    // Side glow strips (from bottom to arch base)
     for (const sx of [-1, 1] as const) {
-      const sideGlow = new Mesh(new BoxGeometry(0.022, archBaseY - (-0.2), 0.04), glow)
-      sideGlow.position.set(sx * 4.00, (-0.2 + archBaseY) / 2, z + 0.38)
-      this.group.add(sideGlow)
+      const pillar = new Mesh(new BoxGeometry(0.14, glassH, 0.08), frameMat)
+      pillar.position.set(sx * (ROOM.rightX - 0.07), glassCY, z + 0.04)
+      this.group.add(pillar)
+      const led = new Mesh(new BoxGeometry(0.016, glassH * 0.88, 0.04), glow)
+      led.position.set(sx * (ROOM.rightX - 0.17), glassCY, z + 0.06)
+      this.group.add(led)
     }
 
-    // ── Thin horizontal HUD rail (fighter-jet feel) ───────────────────────
-    const rail = new Mesh(new BoxGeometry(8.0, 0.055, 0.10), mat(0x0c0c1e, 0.55, 0.6))
-    rail.position.set(0, 1.55, z + 0.38)
-    this.group.add(rail)
-    const railGlow = new Mesh(new BoxGeometry(7.8, 0.018, 0.04), glow)
-    railGlow.position.set(0, 1.55, z + 0.42)
-    this.group.add(railGlow)
+    // ── Top header strip ──────────────────────────────────────────────────
+    const topH = 0.24
+    const topBar = new Mesh(new BoxGeometry(W, topH, 0.08), frameMat)
+    topBar.position.set(0, ROOM.ceilY - topH / 2, z + 0.04)
+    this.group.add(topBar)
+
+    // ── Center A-pillar divider (aircraft center post) ────────────────────
+    const div = new Mesh(new BoxGeometry(0.07, glassH, 0.06), frameMat)
+    div.position.set(0, glassCY, z - 0.4)
+    this.group.add(div)
+    const divGlow = new Mesh(new BoxGeometry(0.016, glassH * 0.90, 0.04), glow)
+    divGlow.position.set(0, glassCY, z - 0.37)
+    this.group.add(divGlow)
+
+    // ── Aircraft-nose glass: top leans ~25° forward (nose protrusion look) ─
+    // Glass center at z=frontZ-1.0, rotation.x=-0.44 rad →
+    //   bottom edge at z≈frontZ, top edge at z≈frontZ-2.0
+    const paneW = ROOM.rightX - 0.075 - 0.04   // half-width of each pane
+    for (const sx of [-1, 1] as const) {
+      const pane = new Mesh(new PlaneGeometry(paneW, glassH), glassMat)
+      pane.position.set(sx * (paneW / 2 + 0.04), glassCY, z - 1.0)
+      pane.rotation.x = -0.44
+      this.group.add(pane)
+    }
+
+    // ── Subtle glow at sill top edge ──────────────────────────────────────
+    const botGlow = new Mesh(new BoxGeometry(W - 0.3, 0.016, 0.04), glow)
+    botGlow.position.set(0, glassBot, z + 0.18)
+    this.group.add(botGlow)
   }
 
   private buildSideWalls(): void {
