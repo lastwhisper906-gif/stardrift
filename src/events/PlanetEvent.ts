@@ -11,7 +11,7 @@ const LAND_THRESHOLD = PLANET_RADIUS + 5   // distance for "near surface" prompt
 export class PlanetEvent implements IEvent {
   readonly id = 'planet'
 
-  private readonly mesh: PlanetMesh
+  readonly mesh: PlanetMesh
   private _center = new Vector3()
   private _complete = false
 

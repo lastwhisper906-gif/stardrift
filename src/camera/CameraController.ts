@@ -23,6 +23,7 @@ export class CameraController {
   mode: CameraMode = 'walking'
 
   private camYaw   = Math.PI
+  private camPitch = 0          // used only in planet_surface 1st-person
   private shakeAmt = 0
   private shakeX   = 0
   private shakeY   = 0
@@ -48,30 +49,35 @@ export class CameraController {
     this.shakeAmt = Math.max(this.shakeAmt, intensity)
   }
 
-  update(character: CharacterController, dt = 0.016, planetCtx?: { charWorldPos: Vector3; planetCenter: Vector3 }): void {
-    // ── Planet surface mode ───────────────────────────────────────────────
+  update(character: CharacterController, dt = 0.016, planetCtx?: { charWorldPos: Vector3; planetCenter: Vector3; rotateLeft: boolean; rotateRight: boolean }): void {
+    // ── Planet surface — 1st-person ice-climbing ──────────────────────────
     if (this.mode === 'planet_surface' && planetCtx) {
-      const { charWorldPos, planetCenter } = planetCtx
-      const up = charWorldPos.clone().sub(planetCenter).normalize()
-      const camFwd = new Vector3(-Math.sin(this.camYaw), 0, -Math.cos(this.camYaw))
+      const { charWorldPos, planetCenter, rotateLeft, rotateRight } = planetCtx
 
-      // Camera: above and behind the character, in world space
-      const camWorld = charWorldPos.clone()
-        .addScaledVector(up, 3.5)
-        .addScaledVector(camFwd, -3.2)
+      // Rotate camera yaw with A/D
+      const YAW_SPEED = 1.8
+      if (rotateLeft)  this.camYaw -= YAW_SPEED * dt
+      if (rotateRight) this.camYaw += YAW_SPEED * dt
 
-      // World → shipGroup local
-      this._tmpV.copy(camWorld)
-      this.shipGroup.worldToLocal(this._tmpV)
+      const up  = this._tmpV.copy(charWorldPos).sub(planetCenter).normalize()
+
+      // Eye position: slightly above the surface
+      this._lookWorld.copy(charWorldPos).addScaledVector(up, 0.9)
+      this.shipGroup.worldToLocal(this._lookWorld)
       this.camera.position.set(
-        this._tmpV.x + this.shakeX,
-        this._tmpV.y + this.shakeY,
-        this._tmpV.z,
+        this._lookWorld.x + this.shakeX,
+        this._lookWorld.y + this.shakeY,
+        this._lookWorld.z,
       )
 
-      // lookAt takes world coords; Three.js handles parent inverse automatically
-      this._lookWorld.copy(charWorldPos).addScaledVector(up, 0.8)
-      this.camera.lookAt(this._lookWorld)
+      // Facing direction projected onto sphere tangent plane
+      const cf  = new Vector3(-Math.sin(this.camYaw), 0, -Math.cos(this.camYaw))
+      const fwdT = cf.clone().addScaledVector(up, -up.dot(cf)).normalize()
+
+      // Look target: forward along surface in world space
+      const lookTarget = charWorldPos.clone().addScaledVector(up, 0.9).addScaledVector(fwdT, 5)
+      this.camera.lookAt(lookTarget)
+
       this.posReady = false
       return
     }
@@ -177,11 +183,9 @@ export class CameraController {
   }
 
   setMode(mode: CameraMode): void {
-    if (mode === 'walking') {
-      this.posReady = false
-    }
+    if (mode === 'walking') this.posReady = false
+    if (mode === 'planet_surface') this.camPitch = 0
     this.camera.fov = mode === 'subship_piloting' ? 110 : 85
-    if (mode === 'planet_surface') this.camera.fov = 85
     this.camera.updateProjectionMatrix()
     this.mode = mode
   }

@@ -1,5 +1,18 @@
 import type { Vector3Tuple, EulerTuple } from '../types/math.js'
 
+// ── Surface climbing state (planet_surface mode) ──────────────────────────────
+export interface SurfaceState {
+  leftAnchorPos:  Vector3Tuple | null   // world-space planted left axe
+  rightAnchorPos: Vector3Tuple | null   // world-space planted right axe
+  activeAxe:      'left' | 'right'      // which axe swings next
+  swingCooldown:  number                // seconds until next swing is allowed
+  pullProgress:   number                // 0 = not pulling, 0–1 = gliding to anchor
+  pullFromPos:    Vector3Tuple | null   // world-space pull start
+  pullToPos:      Vector3Tuple | null   // world-space pull end
+  miningStrikes:  number                // consecutive strikes on current node
+  miningNodePos:  Vector3Tuple | null   // world-space of node being struck
+}
+
 export interface ShipState {
   position: Vector3Tuple
   rotation: EulerTuple
@@ -14,9 +27,24 @@ export interface ShipState {
 export type GamePhase = 'PILOTING' | 'IN_EVENT'
 
 export interface GameState {
-  ship: ShipState
-  phase: GamePhase
-  tick: number
+  ship:    ShipState
+  phase:   GamePhase
+  tick:    number
+  surface: SurfaceState
+}
+
+export function createInitialSurfaceState(): SurfaceState {
+  return {
+    leftAnchorPos:  null,
+    rightAnchorPos: null,
+    activeAxe:      'left',
+    swingCooldown:  0,
+    pullProgress:   0,
+    pullFromPos:    null,
+    pullToPos:      null,
+    miningStrikes:  0,
+    miningNodePos:  null,
+  }
 }
 
 export function createInitialGameState(): GameState {
@@ -31,7 +59,8 @@ export function createInitialGameState(): GameState {
       hull: 100,
       minerals: 0,
     },
-    phase: 'PILOTING',
-    tick: 0,
+    phase:   'PILOTING',
+    tick:    0,
+    surface: createInitialSurfaceState(),
   }
 }

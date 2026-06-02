@@ -16,6 +16,9 @@ import { EvaEvent } from './events/EvaEvent.js'
 import { SubshipEvent } from './events/SubshipEvent.js'
 import { PlanetEvent, PLANET_RADIUS } from './events/PlanetEvent.js'
 import { applyPlanetDrag, resolvePlanetCollision } from './systems/PlanetSystem.js'
+import { updateClimbing } from './systems/ClimbingSystem.js'
+import { IceAxeView } from './render/IceAxeView.js'
+import { createInitialSurfaceState } from './state/GameState.js'
 import { HUD } from './hud/HUD.js'
 import { CharacterController } from './character/CharacterController.js'
 import { CameraController } from './camera/CameraController.js'
@@ -49,6 +52,11 @@ scene.shipGroup.add(character.mesh)
 
 const camCtrl = new CameraController(scene.camera, scene.shipGroup)
 camCtrl.setSubshipGroup(scene.subship.group)
+
+// Ice axe view — 1st-person axes parented to camera (planet_surface mode)
+const iceAxeView = new IceAxeView()
+iceAxeView.group.visible = false
+scene.camera.add(iceAxeView.group)
 
 // Start in WALKING mode: hide 1st-person arm meshes
 scene.cockpit.setArmsVisible(false)
@@ -100,12 +108,12 @@ const _rgtTangent  = new Vector3()
 
 // ── Planet surface exploration ────────────────────────────────────────────────
 let planetLandPhase: 'none' | 'on_surface' = 'none'
-const charWorldPos  = new Vector3()
-let anchorPlanted   = false
-let miningTimer     = 0
-const MINING_HOLD   = 2.0   // seconds to hold E for 1 mineral
-const FOOT_OFFSET   = 0.9   // m above surface
-const _charLocalTmp = new Vector3()
+const charWorldPos   = new Vector3()
+const FOOT_OFFSET    = 0.9   // m above surface
+const _charLocalTmp  = new Vector3()
+let lastSwinging: 'left' | 'right' | 'none' = 'none'
+let prevLeftAxe  = false
+let prevRightAxe = false
 
 // Display-smoothed position/rotation (lerped each frame for buttery movement)
 let dispX = 0, dispY = 0, dispZ = 0
@@ -121,8 +129,9 @@ function resetGame(): void {
       velocity: [0, 0, 0], angularVelocity: [0, 0, 0],
       throttle: 0, oxygen: 100, hull: 100, minerals: 0,
     },
-    phase: 'PILOTING',
-    tick: 0,
+    phase:   'PILOTING',
+    tick:    0,
+    surface: createInitialSurfaceState(),
   })
   character.placeAtHelm()
   camCtrl.setMode('walking')
@@ -144,9 +153,9 @@ function resetGame(): void {
   hud.setLandPrompt(false)
   hud.setAnchorPrompt(false, false)
   hud.hideEndScreen()
-  planetLandPhase = 'none'
-  anchorPlanted   = false
-  miningTimer     = 0
+  planetLandPhase          = 'none'
+  iceAxeView.group.visible = false
+  lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false
 }
 
 const TARGET_MS = 1000 / 60   // ~16.67 ms — cap render at 60 fps on high-refresh displays
@@ -225,13 +234,18 @@ function loop(): void {
       const toCenter = scene.subship.group.position.clone().sub(planetEvent.getPlanetCenter())
       charWorldPos.copy(planetEvent.getPlanetCenter())
         .addScaledVector(toCenter.normalize(), PLANET_RADIUS + FOOT_OFFSET)
-      anchorPlanted   = false
-      miningTimer     = 0
       planetLandPhase = 'on_surface'
-      character.mesh.visible = true
+      // 1st-person climbing mode: hide character, show ice axes
+      character.mesh.visible = false
+      iceAxeView.group.visible = true
       camCtrl.setMode('planet_surface')
+      camCtrl.setWalkYaw(Math.PI + Math.atan2(toCenter.x, toCenter.z))
       hud.setLandPrompt(false)
       hud.setAnchorPrompt(true, false)
+      // Reset surface state — start with both axes planted at landing spot
+      const landPos: [number, number, number] = [charWorldPos.x, charWorldPos.y, charWorldPos.z]
+      room.setState({ surface: { ...createInitialSurfaceState(), leftAnchorPos: landPos, rightAnchorPos: landPos } })
+      lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false
     } else if (mode === 'subship_piloting' && launchPhase === 'flying') {
       // ── Return to main ship if close enough ─────────────────────────────
       _hangarWP.set(
@@ -249,14 +263,14 @@ function loop(): void {
       }
     } else if (mode === 'planet_surface') {
       // ── Lift off from planet ─────────────────────────────────────────────
-      planetLandPhase = 'none'
-      anchorPlanted   = false
-      miningTimer     = 0
-      character.mesh.visible = false
+      planetLandPhase  = 'none'
+      character.mesh.visible   = true
+      iceAxeView.group.visible = false
       camCtrl.setMode('subship_piloting')
       scene.subship.setExteriorVisible(false)
       planetEvent.markComplete()
       hud.setAnchorPrompt(false, false)
+      room.setState({ surface: createInitialSurfaceState() })
     } else if (mode === 'piloting' || mode === 'exterior') {
       character.placeAtHelm()
       camCtrl.setMode('walking')
@@ -300,49 +314,48 @@ function loop(): void {
 
   // ── Input dispatch ───────────────────────────────────────────────────────
   if (mode === 'planet_surface') {
-    // ── Anchor ──────────────────────────────────────────────────────────────
-    if (!anchorPlanted && keyboard.consumeJustPressed('KeyE')) {
-      anchorPlanted = true
-      hud.setAnchorPrompt(true, true)
-    } else if (anchorPlanted && keyboard.isHeld('KeyE')) {
-      const node = planetEvent.getNearestNode(charWorldPos, 9)
-      if (node && !node.collected) {
-        miningTimer += dt
-        if (miningTimer >= MINING_HOLD) {
-          miningTimer = 0
-          planetEvent.collectNode(node)
-          const st = room.getState()
-          room.setState({ ship: { ...st.ship, minerals: st.ship.minerals + 1 } })
-          hud.flashHit()
-          hud.setMinerals(room.getState().ship.minerals)
-        }
-      } else {
-        miningTimer = 0
-      }
+    const climbInput = keyboard.getClimberInput()
+
+    // Edge-detect axe swings (only trigger on the frame the key is first pressed)
+    const leftJust  = climbInput.leftAxe  && !prevLeftAxe
+    const rightJust = climbInput.rightAxe && !prevRightAxe
+    prevLeftAxe  = climbInput.leftAxe
+    prevRightAxe = climbInput.rightAxe
+    const edgeInput = { ...climbInput, leftAxe: leftJust, rightAxe: rightJust }
+
+    const st0 = room.getState()
+    const result = updateClimbing(
+      st0.surface,
+      charWorldPos,
+      planetEvent.getPlanetCenter(),
+      camCtrl.getCamYaw(),
+      edgeInput,
+      dt,
+      planetEvent.mesh.nodes,
+    )
+
+    // Handle mined node
+    if (result.minedNode) {
+      planetEvent.collectNode(result.minedNode)
+      const minerals = st0.ship.minerals + 1
+      room.setState({ surface: result.surface, ship: { ...st0.ship, minerals } })
+      hud.flashHit()
+      hud.setMinerals(minerals)
     } else {
-      miningTimer = 0
+      room.setState({ surface: result.surface })
     }
 
-    // ── Surface movement (only when anchored) ────────────────────────────
-    if (anchorPlanted) {
-      const axes = keyboard.getWalkAxes()
-      _sphereMoveChar(axes.fwd, axes.right, dt)
-    } else {
-      // Drift slowly away from surface when not anchored
-      _surfUp.copy(charWorldPos).sub(planetEvent.getPlanetCenter()).normalize()
-      charWorldPos.addScaledVector(_surfUp, 0.3 * dt)
-      _snapToSurface()
-    }
+    // Ice axe view animation
+    lastSwinging = leftJust ? 'left' : rightJust ? 'right' : 'none'
+    if (lastSwinging !== 'none') iceAxeView.triggerSwing(lastSwinging)
+    iceAxeView.update(lastSwinging, result.surface.pullProgress, result.surface.activeAxe, dt)
 
-    // ── Sync character mesh: world → shipGroup local ──────────────────────
-    _charLocalTmp.copy(charWorldPos)
-    scene.shipGroup.worldToLocal(_charLocalTmp)
-    character.mesh.position.copy(_charLocalTmp)
+    // HUD: show axe prompts
+    hud.setAnchorPrompt(true, result.surface.leftAnchorPos !== null || result.surface.rightAnchorPos !== null)
 
     // Main ship drifts regardless
-    const stP = room.getState()
-    const physShipP = updatePhysics(stP.ship, dt)
-    room.setState({ ship: physShipP, tick: stP.tick + 1 })
+    const physShipP = updatePhysics(st0.ship, dt)
+    room.setState({ ship: physShipP, tick: st0.tick + 1 })
   } else if (mode === 'piloting' || mode === 'exterior') {
     const pilotInput = keyboard.getPilotInput()
     const state = room.getState()
@@ -476,8 +489,10 @@ function loop(): void {
   scene.shipGroup.setRotationFromQuaternion(dispQuat)
 
   // ── Camera update ────────────────────────────────────────────────────────
+  const _climbKeys = mode === 'planet_surface' ? keyboard.getClimberInput() : undefined
   const _planetCtx = mode === 'planet_surface'
-    ? { charWorldPos, planetCenter: planetEvent.getPlanetCenter() }
+    ? { charWorldPos, planetCenter: planetEvent.getPlanetCenter(),
+        rotateLeft: !!_climbKeys?.rotateLeft, rotateRight: !!_climbKeys?.rotateRight }
     : undefined
   camCtrl.update(character, dt, _planetCtx)
 

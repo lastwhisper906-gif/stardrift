@@ -1,4 +1,4 @@
-import type { RawInput } from './InputTypes.js'
+import type { RawInput, ClimberInput } from './InputTypes.js'
 
 export class KeyboardInput {
   private readonly keys: Record<string, boolean> = {}
@@ -45,6 +45,17 @@ export class KeyboardInput {
       fwd:       (k['KeyW'] || k['ArrowUp']    ? 1 : 0) + (k['KeyS'] || k['ArrowDown']  ? -1 : 0),
       right:     (k['KeyD'] || k['ArrowRight'] ? 1 : 0) + (k['KeyA'] || k['ArrowLeft']  ? -1 : 0),
       isRunning: !!(k['ShiftLeft'] || k['ShiftRight']),
+    }
+  }
+
+  /** Planet surface climbing: Q=left axe, E=right axe, A/D=rotate */
+  getClimberInput(): ClimberInput {
+    const k = this.keys
+    return {
+      leftAxe:    !!(k['KeyQ']),
+      rightAxe:   !!(k['KeyE']),
+      rotateLeft:  !!(k['KeyA'] || k['ArrowLeft']),
+      rotateRight: !!(k['KeyD'] || k['ArrowRight']),
     }
   }
 

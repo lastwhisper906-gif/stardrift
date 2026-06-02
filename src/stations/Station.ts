@@ -9,6 +9,7 @@ export enum Station {
   SubPilot = 'SubPilot',
   Observer = 'Observer',
   DockingAlign = 'DockingAlign',
+  Climber = 'Climber',
 }
 
 export const ALL_STATIONS: Station[] = Object.values(Station)

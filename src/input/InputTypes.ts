@@ -9,6 +9,13 @@ export interface RawInput {
   boost: boolean        // Space held = instant max throttle; release = drop to 0
 }
 
+export interface ClimberInput {
+  leftAxe:    boolean   // Q — plant left ice axe
+  rightAxe:   boolean   // E — plant right ice axe
+  rotateLeft:  boolean  // A — rotate camera yaw left
+  rotateRight: boolean  // D — rotate camera yaw right
+}
+
 export interface StationInput {
   station: Station
   payload: RawInput
