@@ -15,6 +15,7 @@ import { BlackHoleEvent } from './events/BlackHoleEvent.js'
 import { EvaEvent } from './events/EvaEvent.js'
 import { SubshipEvent } from './events/SubshipEvent.js'
 import { PlanetEvent, PLANET_RADIUS } from './events/PlanetEvent.js'
+import { applyPlanetDrag, resolvePlanetCollision } from './systems/PlanetSystem.js'
 import { HUD } from './hud/HUD.js'
 import { CharacterController } from './character/CharacterController.js'
 import { CameraController } from './camera/CameraController.js'
@@ -344,42 +345,19 @@ function loop(): void {
     scene.subship.update(subInput, dt)   // animate HOTAS sticks
     if (launchPhase === 'flying' && subshipState) {
       subshipState = updateSubship(subshipState, subInput, dt)
+
+      // ── Planet surface collision + proximity drag ──────────────────────
+      if (eventManager.getActiveEventId() === 'planet') {
+        const center = planetEvent.getPlanetCenter()
+        subshipState = applyPlanetDrag(subshipState, center)
+        subshipState = resolvePlanetCollision(subshipState, center)
+      }
+
       scene.subship.group.position.set(...subshipState.position)
       scene.subship.group.rotation.set(
         subshipState.rotation[0], subshipState.rotation[1], subshipState.rotation[2], 'YXZ',
       )
       audio.setThrottle(subshipState.throttle)
-
-      // ── Planet surface collision + proximity drag ──────────────────────
-      if (eventManager.getActiveEventId() === 'planet') {
-        const subPos = scene.subship.group.position
-        const center = planetEvent.getPlanetCenter()
-        const dist   = subPos.distanceTo(center)
-        const STOP   = PLANET_RADIUS + 2   // hard stop: 2m clearance above surface
-
-        // Proximity drag: ramp up from 0% at 60m above stop, to 18% at stop
-        const DRAG_ZONE = STOP + 60
-        if (dist < DRAG_ZONE && dist >= STOP) {
-          const t     = 1 - (dist - STOP) / 60   // 0 far, 1 near
-          const extra = t * 0.18
-          const [vx, vy, vz] = subshipState.velocity
-          subshipState = { ...subshipState, velocity: [vx * (1 - extra), vy * (1 - extra), vz * (1 - extra)] }
-        }
-
-        // Hard stop: push out + cancel inward velocity component
-        if (dist < STOP) {
-          const normal  = subPos.clone().sub(center).normalize()
-          const safePos = center.clone().addScaledVector(normal, STOP)
-          scene.subship.group.position.copy(safePos)
-          subshipState  = { ...subshipState, position: [safePos.x, safePos.y, safePos.z] }
-
-          const vel    = new Vector3(...subshipState.velocity)
-          const inward = vel.dot(normal)
-          if (inward < 0) vel.addScaledVector(normal, -inward)   // strip inward component
-          vel.multiplyScalar(0.5)                                 // impact energy absorption
-          subshipState = { ...subshipState, velocity: [vel.x, vel.y, vel.z] }
-        }
-      }
     } else {
       audio.setThrottle(0)
     }

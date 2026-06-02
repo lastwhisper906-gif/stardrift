@@ -2,7 +2,6 @@ import {
   Group,
   Mesh,
   MeshStandardMaterial,
-  PointLight,
   SphereGeometry,
   Vector3,
 } from 'three'
@@ -48,25 +47,19 @@ export class PlanetMesh {
 
   private buildPlanet(): void {
     const mat = new MeshStandardMaterial({
-      color:     0x5a4a3a,
-      roughness: 0.88,
-      metalness: 0.10,
+      color:     0xddeeff,   // icy white-blue
+      roughness: 0.55,
+      metalness: 0.12,
     })
     const sphere = new Mesh(new SphereGeometry(PLANET_RADIUS, 32, 32), mat)
     this.group.add(sphere)
-
-    // Rocky surface detail rings (decorative bands)
-    const bandMat = new MeshStandardMaterial({ color: 0x3d2e22, roughness: 0.95, metalness: 0.05 })
-    const crustMat = new MeshStandardMaterial({ color: 0x6e5c48, roughness: 0.80, metalness: 0.15 })
-    this.group.add(new Mesh(new SphereGeometry(PLANET_RADIUS * 0.998, 16, 8), bandMat))
-    this.group.add(new Mesh(new SphereGeometry(PLANET_RADIUS * 0.999, 24, 12), crustMat))
   }
 
   private buildAtmosphere(): void {
     const atmoMat = new MeshStandardMaterial({
-      color:       0x7799cc,
+      color:       0xaaddff,   // icy blue atmosphere
       transparent: true,
-      opacity:     0.08,
+      opacity:     0.10,
       roughness:   0.0,
       metalness:   0.0,
       side:        2,  // DoubleSide
@@ -86,7 +79,7 @@ export class PlanetMesh {
 
     for (const [theta, phi] of NODE_ANGLES) {
       const localPos = spherePoint(theta, phi, PLANET_RADIUS + 1.2)
-      const mesh = new Mesh(new SphereGeometry(2.5, 8, 6), crystal.clone())
+      const mesh = new Mesh(new SphereGeometry(2.0, 8, 6), crystal.clone())
       mesh.position.copy(localPos)
       this.group.add(mesh)
 
@@ -99,10 +92,7 @@ export class PlanetMesh {
   }
 
   private addLights(): void {
-    // Ambient scatter light that makes the planet feel lit
-    const pl = new PointLight(0xffddaa, 0.6, 800)
-    pl.position.set(0, 400, 0)
-    this.group.add(pl)
+    // No embedded light — the scene's DirectionalLight creates a proper lit/dark gradient
   }
 
   /** Call each frame — pulses uncollected node glow */
