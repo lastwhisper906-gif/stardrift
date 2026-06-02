@@ -15,6 +15,7 @@ import { BlackHoleEvent } from './events/BlackHoleEvent.js'
 import { EvaEvent } from './events/EvaEvent.js'
 import { SubshipEvent } from './events/SubshipEvent.js'
 import { PlanetEvent, PLANET_RADIUS } from './events/PlanetEvent.js'
+import { SURFACE_FOOT, SURFACE_EYE } from './render/PlanetMesh.js'
 import { applyPlanetDrag, resolvePlanetCollision } from './systems/PlanetSystem.js'
 import { updateClimbing } from './systems/ClimbingSystem.js'
 import { IceAxeView } from './render/IceAxeView.js'
@@ -109,7 +110,7 @@ const _rgtTangent  = new Vector3()
 // ── Planet surface exploration ────────────────────────────────────────────────
 let planetLandPhase: 'none' | 'on_surface' = 'none'
 const charWorldPos   = new Vector3()
-const FOOT_OFFSET    = 0.9   // m above surface
+const FOOT_OFFSET    = SURFACE_FOOT + SURFACE_EYE   // foot + eye = total offset for placement
 const _charLocalTmp  = new Vector3()
 let lastSwinging: 'left' | 'right' | 'none' = 'none'
 let prevLeftAxe  = false
@@ -230,21 +231,13 @@ function loop(): void {
     } else if (mode === 'subship_piloting' && launchPhase === 'flying'
             && planetLandPhase === 'none'
             && planetEvent.isNearSurface(scene.subship.group.position)) {
-      // ── Land on planet ──────────────────────────────────────────────────
-      const toCenter = scene.subship.group.position.clone().sub(planetEvent.getPlanetCenter())
-      charWorldPos.copy(planetEvent.getPlanetCenter())
-        .addScaledVector(toCenter.normalize(), PLANET_RADIUS + FOOT_OFFSET)
-      planetLandPhase = 'on_surface'
-      // 1st-person climbing mode: hide character, show ice axes
-      character.mesh.visible = false
-      iceAxeView.group.visible = true
-      camCtrl.setMode('planet_surface')
-      camCtrl.setWalkYaw(Math.PI + Math.atan2(toCenter.x, toCenter.z))
+      // ── Begin landing sequence (touching_down phase) ─────────────────────
+      planetLandPhase = 'on_surface'   // outer guard — prevents re-entry
       hud.setLandPrompt(false)
-      hud.setAnchorPrompt(true, false)
-      // Reset surface state — start with both axes planted at landing spot
-      const landPos: [number, number, number] = [charWorldPos.x, charWorldPos.y, charWorldPos.z]
-      room.setState({ surface: { ...createInitialSurfaceState(), leftAnchorPos: landPos, rightAnchorPos: landPos } })
+      const surface = createInitialSurfaceState()
+      surface.landingPhase = 'touching_down'
+      surface.landingProgress = 0
+      room.setState({ surface })
       lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false
     } else if (mode === 'subship_piloting' && launchPhase === 'flying') {
       // ── Return to main ship if close enough ─────────────────────────────
@@ -314,44 +307,48 @@ function loop(): void {
 
   // ── Input dispatch ───────────────────────────────────────────────────────
   if (mode === 'planet_surface') {
-    const climbInput = keyboard.getClimberInput()
-
-    // Edge-detect axe swings (only trigger on the frame the key is first pressed)
-    const leftJust  = climbInput.leftAxe  && !prevLeftAxe
-    const rightJust = climbInput.rightAxe && !prevRightAxe
-    prevLeftAxe  = climbInput.leftAxe
-    prevRightAxe = climbInput.rightAxe
-    const edgeInput = { ...climbInput, leftAxe: leftJust, rightAxe: rightJust }
-
     const st0 = room.getState()
-    const result = updateClimbing(
-      st0.surface,
-      charWorldPos,
-      planetEvent.getPlanetCenter(),
-      camCtrl.getCamYaw(),
-      edgeInput,
-      dt,
-      planetEvent.mesh.nodes,
-    )
 
-    // Handle mined node
-    if (result.minedNode) {
-      planetEvent.collectNode(result.minedNode)
-      const minerals = st0.ship.minerals + 1
-      room.setState({ surface: result.surface, ship: { ...st0.ship, minerals } })
-      hud.flashHit()
-      hud.setMinerals(minerals)
-    } else {
-      room.setState({ surface: result.surface })
+    // Only run climbing when fully landed (not during touchdown/disembark animation)
+    if (st0.surface.landingPhase === 'on_surface') {
+      const climbInput = keyboard.getClimberInput()
+
+      // Edge-detect axe swings (only trigger on the frame the key is first pressed)
+      const leftJust  = climbInput.leftAxe  && !prevLeftAxe
+      const rightJust = climbInput.rightAxe && !prevRightAxe
+      prevLeftAxe  = climbInput.leftAxe
+      prevRightAxe = climbInput.rightAxe
+      const edgeInput = { ...climbInput, leftAxe: leftJust, rightAxe: rightJust }
+
+      const result = updateClimbing(
+        st0.surface,
+        charWorldPos,
+        planetEvent.getPlanetCenter(),
+        camCtrl.getCamYaw(),
+        edgeInput,
+        dt,
+        planetEvent.mesh.nodes,
+      )
+
+      // Handle mined node
+      if (result.minedNode) {
+        planetEvent.collectNode(result.minedNode)
+        const minerals = st0.ship.minerals + 1
+        room.setState({ surface: result.surface, ship: { ...st0.ship, minerals } })
+        hud.flashHit()
+        hud.setMinerals(minerals)
+      } else {
+        room.setState({ surface: result.surface })
+      }
+
+      // Ice axe view animation
+      lastSwinging = leftJust ? 'left' : rightJust ? 'right' : 'none'
+      if (lastSwinging !== 'none') iceAxeView.triggerSwing(lastSwinging)
+      iceAxeView.update(lastSwinging, result.surface.pullProgress, result.surface.activeAxe, dt)
+
+      // HUD: show axe prompts
+      hud.setAnchorPrompt(true, result.surface.leftAnchorPos !== null || result.surface.rightAnchorPos !== null)
     }
-
-    // Ice axe view animation
-    lastSwinging = leftJust ? 'left' : rightJust ? 'right' : 'none'
-    if (lastSwinging !== 'none') iceAxeView.triggerSwing(lastSwinging)
-    iceAxeView.update(lastSwinging, result.surface.pullProgress, result.surface.activeAxe, dt)
-
-    // HUD: show axe prompts
-    hud.setAnchorPrompt(true, result.surface.leftAnchorPos !== null || result.surface.rightAnchorPos !== null)
 
     // Main ship drifts regardless
     const physShipP = updatePhysics(st0.ship, dt)
@@ -476,6 +473,56 @@ function loop(): void {
   }
   eventManager.update(dt)
 
+  // ── Planet landing animation ─────────────────────────────────────────────
+  {
+    const surf = room.getState().surface
+    const TOUCHDOWN_DUR  = 1.8   // seconds for subship to descend to surface
+    const DISEMBARK_DUR  = 1.4   // seconds for camera to lerp to surface eye
+
+    if (surf.landingPhase === 'touching_down') {
+      const progress = Math.min(1, surf.landingProgress + dt / TOUCHDOWN_DUR)
+      room.setState({ surface: { ...surf, landingProgress: progress } })
+
+      // Descend subship from stop radius toward surface
+      const center     = planetEvent.getPlanetCenter()
+      const subPos     = scene.subship.group.position
+      const toSurface  = subPos.clone().sub(center).normalize()
+      const targetDist = PLANET_RADIUS + SURFACE_EYE + 0.5   // rests just above surface
+      const currentDist = subPos.distanceTo(center)
+      const newDist    = currentDist + (targetDist - currentDist) * Math.min(1, dt * 2.5)
+      scene.subship.group.position.copy(center).addScaledVector(toSurface, newDist)
+      if (subshipState) subshipState = { ...subshipState, position: [subPos.x, subPos.y, subPos.z] as [number,number,number] }
+
+      if (progress >= 1) {
+        // Touchdown complete → begin camera disembark lerp
+        const center2   = planetEvent.getPlanetCenter()
+        const toCenter  = scene.subship.group.position.clone().sub(center2)
+        charWorldPos.copy(center2).addScaledVector(toCenter.normalize(), PLANET_RADIUS + FOOT_OFFSET)
+        camCtrl.setWalkYaw(Math.PI + Math.atan2(toCenter.x, toCenter.z))
+        camCtrl.beginDisembarkLerp()
+        iceAxeView.group.visible = true
+        room.setState({ surface: { ...room.getState().surface, landingPhase: 'disembarking', landingProgress: 0 } })
+      }
+    } else if (surf.landingPhase === 'disembarking') {
+      const progress = Math.min(1, surf.landingProgress + dt / DISEMBARK_DUR)
+      room.setState({ surface: { ...surf, landingProgress: progress } })
+
+      const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
+      camCtrl.applyDisembarkLerp(charWorldPos, planetEvent.getPlanetCenter(), ease)
+
+      if (progress >= 1) {
+        // Disembark complete → full planet_surface mode
+        character.mesh.visible = false
+        camCtrl.setMode('planet_surface')
+        hud.setAnchorPrompt(true, false)
+        const landPos: [number, number, number] = [charWorldPos.x, charWorldPos.y, charWorldPos.z]
+        room.setState({ surface: { ...createInitialSurfaceState(),
+          landingPhase: 'on_surface', landingProgress: 1,
+          leftAnchorPos: landPos, rightAnchorPos: landPos } })
+      }
+    }
+  }
+
   // ── Hangar hatch animation ───────────────────────────────────────────────
   scene.corridorHangar.update(launchPhase !== 'docked', dt)
 
@@ -495,12 +542,20 @@ function loop(): void {
   scene.shipGroup.setRotationFromQuaternion(dispQuat)
 
   // ── Camera update ────────────────────────────────────────────────────────
-  const _climbKeys = mode === 'planet_surface' ? keyboard.getClimberInput() : undefined
-  const _planetCtx = mode === 'planet_surface'
+  const _surfLandPhase = room.getState().surface.landingPhase
+  // Only run the full planet_surface camera when fully landed;
+  // during 'touching_down' the subship camera handles it,
+  // during 'disembarking' applyDisembarkLerp (called above) handles it.
+  const _isFullySurface = mode === 'planet_surface' && _surfLandPhase === 'on_surface'
+  const _climbKeys = _isFullySurface ? keyboard.getClimberInput() : undefined
+  const _planetCtx = _isFullySurface
     ? { charWorldPos, planetCenter: planetEvent.getPlanetCenter(),
         rotateLeft: !!_climbKeys?.rotateLeft, rotateRight: !!_climbKeys?.rotateRight }
     : undefined
-  camCtrl.update(character, dt, _planetCtx)
+  // Only call camCtrl.update when not in a landing animation
+  if (_surfLandPhase !== 'disembarking') {
+    camCtrl.update(character, dt, _planetCtx)
+  }
 
   // ── HUD ──────────────────────────────────────────────────────────────────
   const nearHelm    = mode === 'walking' && character.isNearHelm()

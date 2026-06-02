@@ -1,7 +1,14 @@
 import type { Vector3Tuple, EulerTuple } from '../types/math.js'
 
 // ── Surface climbing state (planet_surface mode) ──────────────────────────────
+export type LandingPhase = 'none' | 'touching_down' | 'disembarking' | 'on_surface'
+
 export interface SurfaceState {
+  // ── Landing / disembark sequence ──
+  landingPhase:   LandingPhase
+  landingProgress: number               // 0–1: progress through current landing phase
+
+  // ── Climbing ──
   leftAnchorPos:  Vector3Tuple | null   // world-space planted left axe
   rightAnchorPos: Vector3Tuple | null   // world-space planted right axe
   activeAxe:      'left' | 'right'      // which axe swings next
@@ -35,15 +42,17 @@ export interface GameState {
 
 export function createInitialSurfaceState(): SurfaceState {
   return {
-    leftAnchorPos:  null,
-    rightAnchorPos: null,
-    activeAxe:      'left',
-    swingCooldown:  0,
-    pullProgress:   0,
-    pullFromPos:    null,
-    pullToPos:      null,
-    miningStrikes:  0,
-    miningNodePos:  null,
+    landingPhase:    'none',
+    landingProgress: 0,
+    leftAnchorPos:   null,
+    rightAnchorPos:  null,
+    activeAxe:       'left',
+    swingCooldown:   0,
+    pullProgress:    0,
+    pullFromPos:     null,
+    pullToPos:       null,
+    miningStrikes:   0,
+    miningNodePos:   null,
   }
 }
 

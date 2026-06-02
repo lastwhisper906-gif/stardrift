@@ -3,6 +3,7 @@ import type { Group } from 'three'
 import type { CharacterController } from '../character/CharacterController.js'
 import { ROOM } from '../render/CockpitRoom.js'
 import { HANGAR } from '../render/CorridorHangar.js'
+import { SURFACE_EYE } from '../render/PlanetMesh.js'
 
 export type CameraMode = 'walking' | 'piloting' | 'exterior' | 'subship_piloting' | 'planet_surface'
 
@@ -32,10 +33,12 @@ export class CameraController {
   private readonly smoothPos = new Vector3(0, WALK_UP, WALK_BACK)
   private posReady = false          // false = re-init from current camera on next frame
 
-  private readonly _lookWorld = new Vector3()
-  private readonly _tmpV     = new Vector3()
-  private readonly _subQ     = new Quaternion()
-  private readonly _shipQ    = new Quaternion()
+  private readonly _lookWorld  = new Vector3()
+  private readonly _tmpV      = new Vector3()
+  private readonly _subQ      = new Quaternion()
+  private readonly _shipQ     = new Quaternion()
+  private readonly _lerpStart = new Vector3()
+  private readonly _lerpEnd   = new Vector3()
   private subshipGroup: Group | null = null
 
   constructor(
@@ -62,7 +65,7 @@ export class CameraController {
       const up  = this._tmpV.copy(charWorldPos).sub(planetCenter).normalize()
 
       // Eye position: slightly above the surface
-      this._lookWorld.copy(charWorldPos).addScaledVector(up, 0.9)
+      this._lookWorld.copy(charWorldPos).addScaledVector(up, SURFACE_EYE)
       this.shipGroup.worldToLocal(this._lookWorld)
       this.camera.position.set(
         this._lookWorld.x + this.shakeX,
@@ -75,7 +78,7 @@ export class CameraController {
       const fwdT = cf.clone().addScaledVector(up, -up.dot(cf)).normalize()
 
       // Look target: forward along surface in world space
-      const lookTarget = charWorldPos.clone().addScaledVector(up, 0.9).addScaledVector(fwdT, 5)
+      const lookTarget = charWorldPos.clone().addScaledVector(up, SURFACE_EYE).addScaledVector(fwdT, 5)
       this.camera.lookAt(lookTarget)
 
       this.posReady = false
@@ -195,4 +198,35 @@ export class CameraController {
 
   /** Exposed for character-relative movement in main.ts */
   getCamYaw(): number { return this.camYaw }
+
+  /**
+   * Capture current camera world position as the lerp start.
+   * Call once when the disembarking phase begins.
+   */
+  beginDisembarkLerp(): void {
+    // current camera position is in shipGroup local space; convert to world
+    this._lerpStart.copy(this.camera.position)
+    this.shipGroup.localToWorld(this._lerpStart)
+  }
+
+  /**
+   * Lerp camera from subship eye to planet surface eye.
+   * @param charWorldPos  planet surface eye anchor
+   * @param planetCenter  for computing surface normal
+   * @param t             0→1 progress (eased externally)
+   */
+  applyDisembarkLerp(charWorldPos: Vector3, planetCenter: Vector3, t: number): void {
+    // Compute target eye in world space
+    this._tmpV.copy(charWorldPos).sub(planetCenter).normalize()
+    this._lerpEnd.copy(charWorldPos).addScaledVector(this._tmpV, SURFACE_EYE)
+
+    // Lerp world → shipGroup local
+    const lerpWorld = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, t)
+    this.shipGroup.worldToLocal(lerpWorld)
+    this.camera.position.copy(lerpWorld)
+
+    // Look forward along surface at blended tilt (starts looking at horizon, stays level)
+    const fwdWorld = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, Math.min(1, t + 0.3))
+    this.camera.lookAt(fwdWorld)
+  }
 }

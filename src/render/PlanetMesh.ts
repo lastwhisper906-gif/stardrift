@@ -6,7 +6,10 @@ import {
   Vector3,
 } from 'three'
 
-export const PLANET_RADIUS = 350  // m
+export const PLANET_RADIUS      = 350   // m — geometric radius of the planet sphere
+export const SURFACE_FOOT       = 0.05  // m — character foot above raw PLANET_RADIUS
+export const SURFACE_EYE        = 0.90  // m — camera eye above foot (first-person height)
+export const SURFACE_EYE_RADIUS = PLANET_RADIUS + SURFACE_FOOT + SURFACE_EYE
 
 export interface ResourceNode {
   readonly worldPos: Vector3

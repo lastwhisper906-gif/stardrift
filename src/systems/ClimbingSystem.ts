@@ -2,7 +2,7 @@ import { Vector3 } from 'three'
 import type { SurfaceState } from '../state/GameState.js'
 import type { ClimberInput } from '../input/InputTypes.js'
 import type { ResourceNode } from '../render/PlanetMesh.js'
-import { PLANET_RADIUS } from '../render/PlanetMesh.js'
+import { PLANET_RADIUS, SURFACE_FOOT } from '../render/PlanetMesh.js'
 
 export const SWING_REACH    = 2.8     // metres advanced per axe plant
 export const PULL_DURATION  = 0.38    // seconds to glide to new anchor
@@ -37,7 +37,7 @@ function tangentProject(dir: Vector3, up: Vector3): Vector3 {
 /** Snap worldPos back onto planet surface at PLANET_RADIUS. */
 function snapToSurface(worldPos: Vector3, center: Vector3): void {
   _up.copy(worldPos).sub(center).normalize()
-  worldPos.copy(center).addScaledVector(_up, PLANET_RADIUS + 0.05)
+  worldPos.copy(center).addScaledVector(_up, PLANET_RADIUS + SURFACE_FOOT)
 }
 
 export interface ClimbingResult {

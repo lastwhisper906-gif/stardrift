@@ -10,7 +10,7 @@ const NO_NODES: ResourceNode[] = []
 const CAM_YAW = 0   // looking in -Z direction
 
 function onSurface(): Vector3 {
-  return new Vector3(0, PLANET_RADIUS + 0.05, 0)
+  return new Vector3(0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, 0)
 }
 
 function swing(axe: 'left' | 'right') {
@@ -49,9 +49,9 @@ describe('updateClimbing', () => {
   })
 
   it('pull animation advances charWorldPos toward anchor', () => {
-    const pos  = new Vector3(0, PLANET_RADIUS + 0.05, 0)
-    const from: [number,number,number] = [0, PLANET_RADIUS + 0.05, 0]
-    const to:   [number,number,number] = [0, PLANET_RADIUS + 0.05, -SWING_REACH]
+    const pos  = new Vector3(0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, 0)
+    const from: [number,number,number] = [0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, 0]
+    const to:   [number,number,number] = [0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, -SWING_REACH]
     const s0 = {
       ...createInitialSurfaceState(),
       pullProgress: 0.01,
@@ -65,9 +65,9 @@ describe('updateClimbing', () => {
   })
 
   it('pull completes and resets', () => {
-    const pos  = new Vector3(0, PLANET_RADIUS + 0.05, -SWING_REACH * 0.99)
-    const from: [number,number,number] = [0, PLANET_RADIUS + 0.05, 0]
-    const to:   [number,number,number] = [0, PLANET_RADIUS + 0.05, -SWING_REACH]
+    const pos  = new Vector3(0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, -SWING_REACH * 0.99)
+    const from: [number,number,number] = [0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, 0]
+    const to:   [number,number,number] = [0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, -SWING_REACH]
     const s0 = { ...createInitialSurfaceState(), pullProgress: 0.96, pullFromPos: from, pullToPos: to, leftAnchorPos: from }
     const { surface } = updateClimbing(s0, pos, CENTER, CAM_YAW, NO_INPUT, 0.10, NO_NODES)
     expect(surface.pullProgress).toBe(0)
@@ -76,7 +76,7 @@ describe('updateClimbing', () => {
   })
 
   it('mining: 3 strikes on same node collects ore', () => {
-    const nodePos = new Vector3(0, PLANET_RADIUS + 0.05, -(SWING_REACH * 0.5))
+    const nodePos = new Vector3(0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, -(SWING_REACH * 0.5))
     const node: ResourceNode = { worldPos: nodePos, collected: false, mesh: null as unknown as import('three').Mesh }
 
     const pos = onSurface()
