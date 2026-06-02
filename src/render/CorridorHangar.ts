@@ -246,16 +246,16 @@ export class CorridorHangar {
     backWall.position.set(0, (fy + cy) / 2, HANGAR.backZ + 0.07)
     this.group.add(backWall)
 
-    // Hangar lighting (ceiling strip lights)
+    // Hangar lighting — 4 strip meshes kept for visual; single PointLight covers bay
     const lightMat = mat(0x223355, 0.1, 0.3, 0x0a1a2a, 0.6)
     for (const lz of [32, 37, 42, 47]) {
       const strip = new Mesh(new BoxGeometry(w * 0.7, 0.03, 0.1), lightMat)
       strip.position.set(0, cy - 0.02, lz)
       this.group.add(strip)
-      const pl = new PointLight(0x6699cc, 0.5, 10)
-      pl.position.set(0, cy - 0.1, lz)
-      this.group.add(pl)
     }
+    const hangarLight = new PointLight(0x6699cc, 1.2, 28)
+    hangarLight.position.set(0, cy - 0.1, 40)
+    this.group.add(hangarLight)
 
     // "HANGAR" indicator panel on front wall (between corridor and hangar)
     const frontWall = new Mesh(new BoxGeometry(w, h, 0.12), wallMat)
@@ -297,9 +297,6 @@ export class CorridorHangar {
       this.group.add(glow)
     }
 
-    // Hangar point light for sub-ship area
-    const padLight = new PointLight(0x99bbcc, 0.8, 18)
-    padLight.position.set(0, cy - 0.3, 40)
-    this.group.add(padLight)
+    // Pad lighting covered by hangarLight above
   }
 }

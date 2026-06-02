@@ -269,14 +269,10 @@ export class SubshipVehicle {
       else        this.hotasR = stickGroup
     }
 
-    // ── Lighting ──────────────────────────────────────────────────────────
-    const fill = new PointLight(0x6688cc, 1.50, 7.0)
+    // ── Lighting — 2 lights cover the subship cockpit ─────────────────────
+    const fill = new PointLight(0x6688cc, 1.60, 8.0)
     fill.position.set(0, cy - 0.10, -2.50); g.add(fill)
     const mfdGlow = new PointLight(0x002266, 1.00, 4.0)
     mfdGlow.position.set(0, 0.15, -2.90); g.add(mfdGlow)
-    const winLight = new PointLight(0x7788aa, 0.60, 5.5)
-    winLight.position.set(0, 0.30, fz + 0.80); g.add(winLight)
-    const floorLight = new PointLight(0x001a44, 0.60, 3.5)
-    floorLight.position.set(0, fy + 0.05, -2.80); g.add(floorLight)
   }
 }

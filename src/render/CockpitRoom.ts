@@ -655,16 +655,6 @@ export class CockpitRoom {
   }
 
   private addLighting(): void {
-    // Warm fill from back
-    const backFill = new PointLight(0x002244, 0.5, 18)
-    backFill.position.set(0, 1.0, 10)
-    this.group.add(backFill)
-
-    // Cool accent near secondary stations
-    for (const sx of [-1, 1]) {
-      const l = new PointLight(0x001133, 0.4, 6)
-      l.position.set(sx * 3.5, 0.5, 3.5)
-      this.group.add(l)
-    }
+    // Lighting covered by SceneManager's single interiorFill — no additional lights needed
   }
 }

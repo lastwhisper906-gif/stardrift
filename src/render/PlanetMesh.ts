@@ -51,7 +51,7 @@ export class PlanetMesh {
       roughness: 0.55,
       metalness: 0.12,
     })
-    const sphere = new Mesh(new SphereGeometry(PLANET_RADIUS, 32, 32), mat)
+    const sphere = new Mesh(new SphereGeometry(PLANET_RADIUS, 20, 12), mat)
     this.group.add(sphere)
   }
 
@@ -65,7 +65,7 @@ export class PlanetMesh {
       side:        2,  // DoubleSide
       depthWrite:  false,
     })
-    this.group.add(new Mesh(new SphereGeometry(PLANET_RADIUS + 6, 32, 32), atmoMat))
+    this.group.add(new Mesh(new SphereGeometry(PLANET_RADIUS + 6, 20, 12), atmoMat))
   }
 
   private buildNodes(): void {

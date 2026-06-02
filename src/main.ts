@@ -69,8 +69,9 @@ eventManager.register(evaEvent)
 eventManager.register(subshipEvent)
 eventManager.register(planetEvent)
 
-// TEST: place planet immediately at (0, 0, -500) for resource mining testing
-eventManager.trigger('planet')
+// Set false to skip planet spawn at startup (improves perf during development)
+const DEBUG_SPAWN_PLANET = true
+if (DEBUG_SPAWN_PLANET) eventManager.trigger('planet')
 
 // ── HUD ───────────────────────────────────────────────────────────────────────
 const hud   = new HUD()
@@ -90,17 +91,21 @@ const LAUNCH_ANIM_SPD = 4.5   // m/s
 
 let subshipState: SubshipState | null = null
 
-// Pre-allocated vector for hangar world-position proximity check
-const _hangarWP = new Vector3()
+// Pre-allocated vectors — reused every frame, zero GC pressure
+const _hangarWP    = new Vector3()
+const _surfUp      = new Vector3()
+const _camFwd      = new Vector3()
+const _fwdTangent  = new Vector3()
+const _rgtTangent  = new Vector3()
 
 // ── Planet surface exploration ────────────────────────────────────────────────
 let planetLandPhase: 'none' | 'on_surface' = 'none'
-const charWorldPos = new Vector3()
-let anchorPlanted  = false
-let miningTimer    = 0
-const MINING_HOLD  = 2.0   // seconds to hold E for 1 mineral
-const FOOT_OFFSET  = 0.9   // m above surface
-const _charLocalTmp = new Vector3()   // reused scratch vector
+const charWorldPos  = new Vector3()
+let anchorPlanted   = false
+let miningTimer     = 0
+const MINING_HOLD   = 2.0   // seconds to hold E for 1 mineral
+const FOOT_OFFSET   = 0.9   // m above surface
+const _charLocalTmp = new Vector3()
 
 // Display-smoothed position/rotation (lerped each frame for buttery movement)
 let dispX = 0, dispY = 0, dispZ = 0
@@ -171,6 +176,12 @@ function loop(): void {
   totalTime += dt
 
   const mode = camCtrl.mode
+
+  // ── Visibility culling — hide geometry not reachable from the current camera ─
+  const inInterior = mode === 'walking' || mode === 'piloting'
+  cockpitRoom.group.visible          = inInterior
+  scene.cockpit.group.visible        = inInterior
+  scene.corridorHangar.group.visible = mode === 'walking'
 
   // ── Dismiss title screen on any key ──────────────────────────────────────
   // (handled below via keyboard polling — any consumeJustPressed drains the queue)
@@ -318,8 +329,8 @@ function loop(): void {
       _sphereMoveChar(axes.fwd, axes.right, dt)
     } else {
       // Drift slowly away from surface when not anchored
-      const up = charWorldPos.clone().sub(planetEvent.getPlanetCenter()).normalize()
-      charWorldPos.addScaledVector(up, 0.3 * dt)
+      _surfUp.copy(charWorldPos).sub(planetEvent.getPlanetCenter()).normalize()
+      charWorldPos.addScaledVector(_surfUp, 0.3 * dt)
       _snapToSurface()
     }
 
@@ -575,22 +586,23 @@ requestAnimationFrame(loop)
 
 function _snapToSurface(): void {
   const C = planetEvent.getPlanetCenter()
-  const d = charWorldPos.clone().sub(C).normalize()
-  charWorldPos.copy(C).addScaledVector(d, PLANET_RADIUS + FOOT_OFFSET)
+  _surfUp.copy(charWorldPos).sub(C).normalize()
+  charWorldPos.copy(C).addScaledVector(_surfUp, PLANET_RADIUS + FOOT_OFFSET)
 }
 
 function _sphereMoveChar(fwd: number, right: number, dt: number): void {
-  const C  = planetEvent.getPlanetCenter()
-  const up = charWorldPos.clone().sub(C).normalize()
+  const C = planetEvent.getPlanetCenter()
+  _surfUp.copy(charWorldPos).sub(C).normalize()
 
   // Camera-relative forward projected onto sphere tangent plane (Gram-Schmidt)
-  const cf = new Vector3(-Math.sin(camCtrl.getCamYaw()), 0, -Math.cos(camCtrl.getCamYaw()))
-  const fwdT = cf.clone().addScaledVector(up, -up.dot(cf)).normalize()
-  if (fwdT.lengthSq() < 0.01) return   // polar singularity guard
-  const rgtT = new Vector3().crossVectors(up, fwdT)
+  const yaw = camCtrl.getCamYaw()
+  _camFwd.set(-Math.sin(yaw), 0, -Math.cos(yaw))
+  _fwdTangent.copy(_camFwd).addScaledVector(_surfUp, -_surfUp.dot(_camFwd)).normalize()
+  if (_fwdTangent.lengthSq() < 0.01) return   // polar singularity guard
+  _rgtTangent.crossVectors(_surfUp, _fwdTangent)
 
   charWorldPos
-    .addScaledVector(fwdT, fwd   * 4.0 * dt)
-    .addScaledVector(rgtT, right * 4.0 * dt)
+    .addScaledVector(_fwdTangent, fwd   * 4.0 * dt)
+    .addScaledVector(_rgtTangent, right * 4.0 * dt)
   _snapToSurface()
 }

@@ -65,18 +65,10 @@ export class SceneManager {
     // Screen glow follows cockpit
     this.shipGroup.add(screenGlow)
 
-    // Interior fill lights — increased for brighter cockpit
-    const interiorFill = new PointLight(0xbbccdd, 1.6, 32)
-    interiorFill.position.set(0, 3.0, 7.0)
+    // Single interior fill — covers full ship length; replaces 3 overlapping lights
+    const interiorFill = new PointLight(0xbbccdd, 2.0, 48)
+    interiorFill.position.set(0, 3.0, 10.0)
     this.shipGroup.add(interiorFill)
-
-    const backFill = new PointLight(0x99aabb, 1.1, 28)
-    backFill.position.set(0, 2.5, 13.0)
-    this.shipGroup.add(backFill)
-
-    const frontFill = new PointLight(0x8899cc, 0.9, 16)
-    frontFill.position.set(0, 1.5, 0)
-    this.shipGroup.add(frontFill)
 
     // Cockpit interior
     this.cockpit = new CockpitInterior()
