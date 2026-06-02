@@ -360,7 +360,13 @@ function loop(): void {
     const pilotInput = keyboard.getPilotInput()
     const state = room.getState()
     const next = router.dispatch('player1', pilotInput, state, dt)
-    const physShip = updatePhysics(next.ship, dt)
+    let physShip = updatePhysics(next.ship, dt)
+    // ── Planet collision for main ship ────────────────────────────────────
+    if (eventManager.getActiveEventId() === 'planet') {
+      const center = planetEvent.getPlanetCenter()
+      physShip = applyPlanetDrag(physShip, center)
+      physShip = resolvePlanetCollision(physShip, center)
+    }
     room.setState({ ship: physShip, tick: state.tick + 1 })
     audio.setThrottle(physShip.throttle)
     if (mode === 'piloting') scene.cockpit.update(pilotInput, physShip, dt)
