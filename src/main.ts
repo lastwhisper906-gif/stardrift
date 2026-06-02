@@ -14,6 +14,7 @@ import { AlienEvent } from './events/AlienEvent.js'
 import { BlackHoleEvent } from './events/BlackHoleEvent.js'
 import { EvaEvent } from './events/EvaEvent.js'
 import { SubshipEvent } from './events/SubshipEvent.js'
+import { PlanetEvent, PLANET_RADIUS } from './events/PlanetEvent.js'
 import { HUD } from './hud/HUD.js'
 import { CharacterController } from './character/CharacterController.js'
 import { CameraController } from './camera/CameraController.js'
@@ -58,12 +59,17 @@ const alienEvent      = new AlienEvent(scene.scene, room)
 const blackHoleEvent  = new BlackHoleEvent(scene.scene, room)
 const evaEvent        = new EvaEvent(room)
 const subshipEvent    = new SubshipEvent(scene.scene, room)
+const planetEvent     = new PlanetEvent(scene.scene, room)
 const eventManager    = new EventManager(room)
 eventManager.register(asteroidEvent)
 eventManager.register(alienEvent)
 eventManager.register(blackHoleEvent)
 eventManager.register(evaEvent)
 eventManager.register(subshipEvent)
+eventManager.register(planetEvent)
+
+// TEST: place planet immediately at (0, 0, -500) for resource mining testing
+eventManager.trigger('planet')
 
 // ── HUD ───────────────────────────────────────────────────────────────────────
 const hud   = new HUD()
@@ -74,8 +80,26 @@ hud.setInteractPrompt(false)
 let pilotingTimer = 0
 let nextTriggerDelay = 20
 let gameOver = false
-let subshipLaunched = false
+
+type LaunchPhase = 'docked' | 'hatch_open' | 'descending' | 'flying' | 'ascending'
+let launchPhase: LaunchPhase = 'docked'
+let subshipLocalY = 0.0
+const DESCENT_TARGET  = -8.0
+const LAUNCH_ANIM_SPD = 4.5   // m/s
+
 let subshipState: SubshipState | null = null
+
+// Pre-allocated vector for hangar world-position proximity check
+const _hangarWP = new Vector3()
+
+// ── Planet surface exploration ────────────────────────────────────────────────
+let planetLandPhase: 'none' | 'on_surface' = 'none'
+const charWorldPos = new Vector3()
+let anchorPlanted  = false
+let miningTimer    = 0
+const MINING_HOLD  = 2.0   // seconds to hold E for 1 mineral
+const FOOT_OFFSET  = 0.9   // m above surface
+const _charLocalTmp = new Vector3()   // reused scratch vector
 
 // Display-smoothed position/rotation (lerped each frame for buttery movement)
 let dispX = 0, dispY = 0, dispZ = 0
@@ -89,7 +113,7 @@ function resetGame(): void {
     ship: {
       position: [0, 0, 0], rotation: [0, 0, 0],
       velocity: [0, 0, 0], angularVelocity: [0, 0, 0],
-      throttle: 0, oxygen: 100, hull: 100,
+      throttle: 0, oxygen: 100, hull: 100, minerals: 0,
     },
     phase: 'PILOTING',
     tick: 0,
@@ -103,21 +127,31 @@ function resetGame(): void {
   pilotingTimer    = 0
   nextTriggerDelay = 20
   gameOver         = false
-  subshipLaunched  = false
+  launchPhase      = 'docked'
+  subshipLocalY    = 0.0
   subshipState     = null
   dispX = 0; dispY = 0; dispZ = 0
   dispQuat.identity()
   scene.dockSubship()
   hud.setLaunchPrompt(false)
+  hud.setDockPrompt(false)
+  hud.setLandPrompt(false)
+  hud.setAnchorPrompt(false, false)
   hud.hideEndScreen()
+  planetLandPhase = 'none'
+  anchorPlanted   = false
+  miningTimer     = 0
 }
 
-let lastTime  = performance.now()
+const TARGET_MS = 1000 / 60   // ~16.67 ms — cap render at 60 fps on high-refresh displays
+let lastTime  = performance.now() - TARGET_MS
 let totalTime = 0
 let prevHull  = 100
 
 function loop(): void {
+  requestAnimationFrame(loop)
   const now = performance.now()
+  if (now - lastTime < TARGET_MS * 0.9) return   // skip frame if called too early
   const dt  = Math.min((now - lastTime) / 1000, 0.05)
   lastTime   = now
 
@@ -131,7 +165,6 @@ function loop(): void {
       audio.init()
     }
     scene.render()
-    requestAnimationFrame(loop)
     return
   }
   totalTime += dt
@@ -152,7 +185,7 @@ function loop(): void {
     }
   }
 
-  // ── F key: toggle WALKING ↔ PILOTING / SUB-SHIP ─────────────────────────
+  // ── F key ────────────────────────────────────────────────────────────────
   if (keyboard.consumeJustPressed('KeyF')) {
     if (mode === 'walking' && character.isNearHelm()) {
       camCtrl.setMode('piloting')
@@ -164,18 +197,54 @@ function loop(): void {
       camCtrl.setMode('subship_piloting')
       character.mesh.visible = false
       hud.setInteractPrompt(false)
-      scene.subship.setExteriorVisible(false)   // hide hull so pilot can see out
+      scene.subship.setExteriorVisible(false)
       scene.subship.cockpitInterior.setArmsVisible(true)
-      if (!subshipLaunched) hud.setLaunchPrompt(true)
-    } else if (mode === 'subship_piloting') {
-      // Exit sub-ship
-      character.placeNearSubship()
-      camCtrl.setMode('walking')
-      camCtrl.setWalkYaw(-Math.PI / 2)
-      character.mesh.visible = true
-      scene.subship.setExteriorVisible(true)
-      scene.subship.cockpitInterior.setArmsVisible(false)
+      if (launchPhase === 'docked') hud.setLaunchPrompt(true)
+    } else if (mode === 'subship_piloting' && launchPhase === 'docked') {
+      // ── Start launch sequence ───────────────────────────────────────────
+      launchPhase   = 'hatch_open'
+      subshipLocalY = 0.0
+      scene.subship.group.position.y = 0.0
       hud.setLaunchPrompt(false)
+    } else if (mode === 'subship_piloting' && launchPhase === 'flying'
+            && planetLandPhase === 'none'
+            && planetEvent.isNearSurface(scene.subship.group.position)) {
+      // ── Land on planet ──────────────────────────────────────────────────
+      const toCenter = scene.subship.group.position.clone().sub(planetEvent.getPlanetCenter())
+      charWorldPos.copy(planetEvent.getPlanetCenter())
+        .addScaledVector(toCenter.normalize(), PLANET_RADIUS + FOOT_OFFSET)
+      anchorPlanted   = false
+      miningTimer     = 0
+      planetLandPhase = 'on_surface'
+      character.mesh.visible = true
+      camCtrl.setMode('planet_surface')
+      hud.setLandPrompt(false)
+      hud.setAnchorPrompt(true, false)
+    } else if (mode === 'subship_piloting' && launchPhase === 'flying') {
+      // ── Return to main ship if close enough ─────────────────────────────
+      _hangarWP.set(
+        scene.shipGroup.position.x,
+        scene.shipGroup.position.y - 1.1,
+        scene.shipGroup.position.z + 40,
+      )
+      if (scene.subship.group.position.distanceTo(_hangarWP) < 18) {
+        scene.attachSubshipForAscent()
+        subshipLocalY = DESCENT_TARGET
+        launchPhase   = 'ascending'
+        subshipState  = null
+        audio.setThrottle(0)
+        hud.setDockPrompt(false)
+      }
+    } else if (mode === 'planet_surface') {
+      // ── Lift off from planet ─────────────────────────────────────────────
+      planetLandPhase = 'none'
+      anchorPlanted   = false
+      miningTimer     = 0
+      character.mesh.visible = false
+      camCtrl.setMode('subship_piloting')
+      scene.subship.setExteriorVisible(false)
+      planetEvent.markComplete()
+      hud.setAnchorPrompt(false, false)
     } else if (mode === 'piloting' || mode === 'exterior') {
       character.placeAtHelm()
       camCtrl.setMode('walking')
@@ -186,18 +255,83 @@ function loop(): void {
     }
   }
 
-  // ── E key: launch sub-ship when seated and not yet launched ─────────────
-  if (mode === 'subship_piloting' && !subshipLaunched && keyboard.consumeJustPressed('KeyE')) {
-    subshipLaunched = true
-    const worldPos = new Vector3()
-    scene.subship.group.getWorldPosition(worldPos)
-    subshipState = createSubshipState([worldPos.x, worldPos.y, worldPos.z])
-    scene.launchSubship()
-    hud.setLaunchPrompt(false)
+  // ── Sub-ship launch / return animation ──────────────────────────────────
+  if (launchPhase === 'hatch_open') {
+    if (scene.corridorHangar.hatchProgress >= 0.86) {
+      launchPhase = 'descending'
+    }
+  } else if (launchPhase === 'descending') {
+    subshipLocalY -= LAUNCH_ANIM_SPD * dt
+    scene.subship.group.position.y = subshipLocalY
+    if (subshipLocalY <= DESCENT_TARGET) {
+      const worldPos = new Vector3()
+      scene.subship.group.getWorldPosition(worldPos)
+      subshipState = createSubshipState([worldPos.x, worldPos.y, worldPos.z])
+      scene.launchSubship()
+      launchPhase = 'flying'
+    }
+  } else if (launchPhase === 'ascending') {
+    subshipLocalY += LAUNCH_ANIM_SPD * dt
+    scene.subship.group.position.y = subshipLocalY
+    if (subshipLocalY >= 0) {
+      scene.subship.group.position.set(0, 0, 40)
+      launchPhase = 'docked'
+      // Return pilot to walking mode
+      character.placeNearSubship()
+      camCtrl.setMode('walking')
+      camCtrl.setWalkYaw(-Math.PI / 2)
+      character.mesh.visible = true
+      scene.subship.setExteriorVisible(true)
+      scene.subship.cockpitInterior.setArmsVisible(false)
+    }
   }
 
   // ── Input dispatch ───────────────────────────────────────────────────────
-  if (mode === 'piloting' || mode === 'exterior') {
+  if (mode === 'planet_surface') {
+    // ── Anchor ──────────────────────────────────────────────────────────────
+    if (!anchorPlanted && keyboard.consumeJustPressed('KeyE')) {
+      anchorPlanted = true
+      hud.setAnchorPrompt(true, true)
+    } else if (anchorPlanted && keyboard.isHeld('KeyE')) {
+      const node = planetEvent.getNearestNode(charWorldPos, 9)
+      if (node && !node.collected) {
+        miningTimer += dt
+        if (miningTimer >= MINING_HOLD) {
+          miningTimer = 0
+          planetEvent.collectNode(node)
+          const st = room.getState()
+          room.setState({ ship: { ...st.ship, minerals: st.ship.minerals + 1 } })
+          hud.flashHit()
+          hud.setMinerals(room.getState().ship.minerals)
+        }
+      } else {
+        miningTimer = 0
+      }
+    } else {
+      miningTimer = 0
+    }
+
+    // ── Surface movement (only when anchored) ────────────────────────────
+    if (anchorPlanted) {
+      const axes = keyboard.getWalkAxes()
+      _sphereMoveChar(axes.fwd, axes.right, dt)
+    } else {
+      // Drift slowly away from surface when not anchored
+      const up = charWorldPos.clone().sub(planetEvent.getPlanetCenter()).normalize()
+      charWorldPos.addScaledVector(up, 0.3 * dt)
+      _snapToSurface()
+    }
+
+    // ── Sync character mesh: world → shipGroup local ──────────────────────
+    _charLocalTmp.copy(charWorldPos)
+    scene.shipGroup.worldToLocal(_charLocalTmp)
+    character.mesh.position.copy(_charLocalTmp)
+
+    // Main ship drifts regardless
+    const stP = room.getState()
+    const physShipP = updatePhysics(stP.ship, dt)
+    room.setState({ ship: physShipP, tick: stP.tick + 1 })
+  } else if (mode === 'piloting' || mode === 'exterior') {
     const pilotInput = keyboard.getPilotInput()
     const state = room.getState()
     const next = router.dispatch('player1', pilotInput, state, dt)
@@ -208,13 +342,44 @@ function loop(): void {
   } else if (mode === 'subship_piloting') {
     const subInput = keyboard.getPilotInput()
     scene.subship.update(subInput, dt)   // animate HOTAS sticks
-    if (subshipLaunched && subshipState) {
+    if (launchPhase === 'flying' && subshipState) {
       subshipState = updateSubship(subshipState, subInput, dt)
       scene.subship.group.position.set(...subshipState.position)
       scene.subship.group.rotation.set(
         subshipState.rotation[0], subshipState.rotation[1], subshipState.rotation[2], 'YXZ',
       )
       audio.setThrottle(subshipState.throttle)
+
+      // ── Planet surface collision + proximity drag ──────────────────────
+      if (eventManager.getActiveEventId() === 'planet') {
+        const subPos = scene.subship.group.position
+        const center = planetEvent.getPlanetCenter()
+        const dist   = subPos.distanceTo(center)
+        const STOP   = PLANET_RADIUS + 2   // hard stop: 2m clearance above surface
+
+        // Proximity drag: ramp up from 0% at 60m above stop, to 18% at stop
+        const DRAG_ZONE = STOP + 60
+        if (dist < DRAG_ZONE && dist >= STOP) {
+          const t     = 1 - (dist - STOP) / 60   // 0 far, 1 near
+          const extra = t * 0.18
+          const [vx, vy, vz] = subshipState.velocity
+          subshipState = { ...subshipState, velocity: [vx * (1 - extra), vy * (1 - extra), vz * (1 - extra)] }
+        }
+
+        // Hard stop: push out + cancel inward velocity component
+        if (dist < STOP) {
+          const normal  = subPos.clone().sub(center).normalize()
+          const safePos = center.clone().addScaledVector(normal, STOP)
+          scene.subship.group.position.copy(safePos)
+          subshipState  = { ...subshipState, position: [safePos.x, safePos.y, safePos.z] }
+
+          const vel    = new Vector3(...subshipState.velocity)
+          const inward = vel.dot(normal)
+          if (inward < 0) vel.addScaledVector(normal, -inward)   // strip inward component
+          vel.multiplyScalar(0.5)                                 // impact energy absorption
+          subshipState = { ...subshipState, velocity: [vel.x, vel.y, vel.z] }
+        }
+      }
     } else {
       audio.setThrottle(0)
     }
@@ -262,7 +427,7 @@ function loop(): void {
 
   // ── Events (only trigger when piloting or sub-ship launched) ────────────
   const phase = room.getState().phase
-  if ((mode === 'piloting' || mode === 'exterior' || (mode === 'subship_piloting' && subshipLaunched)) && phase === 'PILOTING') {
+  if ((mode === 'piloting' || mode === 'exterior' || (mode === 'subship_piloting' && launchPhase === 'flying')) && phase === 'PILOTING') {
     pilotingTimer += dt
     if (pilotingTimer >= nextTriggerDelay) {
       pilotingTimer    = 0
@@ -274,6 +439,7 @@ function loop(): void {
       if (roll < 0.25)        eventId = 'alien'
       else if (roll < 0.38)   eventId = 'blackhole'
       else if (roll < 0.50)   eventId = 'subship'   // scout probe deploys
+      else if (roll < 0.65)   eventId = 'planet'    // planet exploration
       else if (hull < 40)     eventId = 'eva'        // EVA only when hull critical
       eventManager.trigger(eventId)
     }
@@ -303,7 +469,7 @@ function loop(): void {
   eventManager.update(dt)
 
   // ── Hangar hatch animation ───────────────────────────────────────────────
-  scene.corridorHangar.update(subshipLaunched, dt)
+  scene.corridorHangar.update(launchPhase !== 'docked', dt)
 
   // ── Sync ship group (lerped for smooth movement) ─────────────────────────
   const ship = room.getState().ship
@@ -321,12 +487,35 @@ function loop(): void {
   scene.shipGroup.setRotationFromQuaternion(dispQuat)
 
   // ── Camera update ────────────────────────────────────────────────────────
-  camCtrl.update(character, dt)
+  const _planetCtx = mode === 'planet_surface'
+    ? { charWorldPos, planetCenter: planetEvent.getPlanetCenter() }
+    : undefined
+  camCtrl.update(character, dt, _planetCtx)
 
   // ── HUD ──────────────────────────────────────────────────────────────────
   const nearHelm    = mode === 'walking' && character.isNearHelm()
   const nearSubship = mode === 'walking' && character.isNearSubship()
   hud.setInteractPrompt(nearHelm || nearSubship)
+  hud.setLaunchPrompt(launchPhase === 'docked' && mode === 'subship_piloting')
+
+  // Dock prompt: show when flying sub-ship near the hangar
+  if (launchPhase === 'flying' && mode === 'subship_piloting') {
+    _hangarWP.set(
+      scene.shipGroup.position.x,
+      scene.shipGroup.position.y - 1.1,
+      scene.shipGroup.position.z + 40,
+    )
+    hud.setDockPrompt(scene.subship.group.position.distanceTo(_hangarWP) < 18)
+  } else {
+    hud.setDockPrompt(false)
+  }
+
+  // Land prompt: show when flying sub-ship near planet surface
+  const _nearPlanet = launchPhase === 'flying' && mode === 'subship_piloting'
+    && planetLandPhase === 'none'
+    && eventManager.getActiveEventId() === 'planet'
+    && planetEvent.isNearSurface(scene.subship.group.position)
+  hud.setLandPrompt(_nearPlanet)
 
   // Impact audio + camera shake when hull decreases
   if (ship.hull < prevHull - 0.5) {
@@ -400,7 +589,30 @@ function loop(): void {
   if (gameOver && keyboard.consumeJustPressed('KeyR')) resetGame()
 
   scene.render()
-  requestAnimationFrame(loop)
 }
 
 requestAnimationFrame(loop)
+
+// ── Planet surface helpers ─────────────────────────────────────────────────────
+
+function _snapToSurface(): void {
+  const C = planetEvent.getPlanetCenter()
+  const d = charWorldPos.clone().sub(C).normalize()
+  charWorldPos.copy(C).addScaledVector(d, PLANET_RADIUS + FOOT_OFFSET)
+}
+
+function _sphereMoveChar(fwd: number, right: number, dt: number): void {
+  const C  = planetEvent.getPlanetCenter()
+  const up = charWorldPos.clone().sub(C).normalize()
+
+  // Camera-relative forward projected onto sphere tangent plane (Gram-Schmidt)
+  const cf = new Vector3(-Math.sin(camCtrl.getCamYaw()), 0, -Math.cos(camCtrl.getCamYaw()))
+  const fwdT = cf.clone().addScaledVector(up, -up.dot(cf)).normalize()
+  if (fwdT.lengthSq() < 0.01) return   // polar singularity guard
+  const rgtT = new Vector3().crossVectors(up, fwdT)
+
+  charWorldPos
+    .addScaledVector(fwdT, fwd   * 4.0 * dt)
+    .addScaledVector(rgtT, right * 4.0 * dt)
+  _snapToSurface()
+}

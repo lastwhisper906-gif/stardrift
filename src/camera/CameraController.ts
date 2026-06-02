@@ -4,11 +4,11 @@ import type { CharacterController } from '../character/CharacterController.js'
 import { ROOM } from '../render/CockpitRoom.js'
 import { HANGAR } from '../render/CorridorHangar.js'
 
-export type CameraMode = 'walking' | 'piloting' | 'exterior' | 'subship_piloting'
+export type CameraMode = 'walking' | 'piloting' | 'exterior' | 'subship_piloting' | 'planet_surface'
 
 const PILOT_EYE      = new Vector3(0, 0.22, 0.08)
-const SUBSHIP_EYE    = new Vector3(0, 0.30, 37.8)   // fallback when group not set
-const SUBSHIP_LOCAL  = new Vector3(0, 0.30, -2.0)   // seated eye height, dashboard below
+const SUBSHIP_EYE    = new Vector3(0, 0.55, 36.7)   // fallback when group not set
+const SUBSHIP_LOCAL  = new Vector3(0, 0.55, -3.35)  // fighter-jet: right up against the canopy
 const EXT_POS    = new Vector3(0, 14, 38)
 const EXT_TARGET = new Vector3(0, 2, 8)
 const WALK_UP    = 1.5
@@ -48,7 +48,34 @@ export class CameraController {
     this.shakeAmt = Math.max(this.shakeAmt, intensity)
   }
 
-  update(character: CharacterController, dt = 0.016): void {
+  update(character: CharacterController, dt = 0.016, planetCtx?: { charWorldPos: Vector3; planetCenter: Vector3 }): void {
+    // ── Planet surface mode ───────────────────────────────────────────────
+    if (this.mode === 'planet_surface' && planetCtx) {
+      const { charWorldPos, planetCenter } = planetCtx
+      const up = charWorldPos.clone().sub(planetCenter).normalize()
+      const camFwd = new Vector3(-Math.sin(this.camYaw), 0, -Math.cos(this.camYaw))
+
+      // Camera: above and behind the character, in world space
+      const camWorld = charWorldPos.clone()
+        .addScaledVector(up, 3.5)
+        .addScaledVector(camFwd, -3.2)
+
+      // World → shipGroup local
+      this._tmpV.copy(camWorld)
+      this.shipGroup.worldToLocal(this._tmpV)
+      this.camera.position.set(
+        this._tmpV.x + this.shakeX,
+        this._tmpV.y + this.shakeY,
+        this._tmpV.z,
+      )
+
+      // lookAt takes world coords; Three.js handles parent inverse automatically
+      this._lookWorld.copy(charWorldPos).addScaledVector(up, 0.8)
+      this.camera.lookAt(this._lookWorld)
+      this.posReady = false
+      return
+    }
+
     // ── Shake decay ───────────────────────────────────────────────────────
     if (this.shakeAmt > 0) {
       this.shakeAmt = Math.max(0, this.shakeAmt - dt * 5)
@@ -153,7 +180,8 @@ export class CameraController {
     if (mode === 'walking') {
       this.posReady = false
     }
-    this.camera.fov = mode === 'subship_piloting' ? 100 : 85
+    this.camera.fov = mode === 'subship_piloting' ? 110 : 85
+    if (mode === 'planet_surface') this.camera.fov = 85
     this.camera.updateProjectionMatrix()
     this.mode = mode
   }

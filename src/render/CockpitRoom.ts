@@ -224,13 +224,7 @@ export class CockpitRoom {
     topBar.position.set(0, ROOM.ceilY - topH / 2, z + 0.04)
     this.group.add(topBar)
 
-    // ── Center A-pillar divider (aircraft center post) ────────────────────
-    const div = new Mesh(new BoxGeometry(0.07, glassH, 0.06), frameMat)
-    div.position.set(0, glassCY, z - 0.4)
-    this.group.add(div)
-    const divGlow = new Mesh(new BoxGeometry(0.016, glassH * 0.90, 0.04), glow)
-    divGlow.position.set(0, glassCY, z - 0.37)
-    this.group.add(divGlow)
+    // Center A-pillar removed — open unobstructed forward view
 
     // ── Aircraft-nose glass: top leans ~25° forward (nose protrusion look) ─
     // Glass center at z=frontZ-1.0, rotation.x=-0.44 rad →

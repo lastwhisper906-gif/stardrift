@@ -8,7 +8,7 @@ import {
   Scene,
   WebGLRenderer,
 } from 'three'
-// import { createStarField } from './StarField.js'  // disabled for performance
+import { createStarField } from './StarField.js'
 import { CockpitInterior } from './CockpitInterior.js'
 import { ShipExterior } from './ShipExterior.js'
 import { SpaceStation } from './SpaceStation.js'
@@ -37,15 +37,15 @@ export class SceneManager {
 
     this.camera = new PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 2000)
 
-    this.renderer = new WebGLRenderer({ antialias: true })
+    this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
     this.renderer.setSize(window.innerWidth, window.innerHeight)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     document.body.appendChild(this.renderer.domElement)
 
     // ── Lighting ─────────────────────────────────────────────────────────
-    this.scene.add(new AmbientLight(0xffffff, 0.55))  // brighter interior
+    this.scene.add(new AmbientLight(0xffffff, 0.85))  // brighter ambient
 
-    const sun = new DirectionalLight(0xfff8e8, 1.0)
+    const sun = new DirectionalLight(0xfff8e8, 1.4)
     sun.position.set(20, 30, 10)
     this.scene.add(sun)
 
@@ -53,8 +53,7 @@ export class SceneManager {
     const screenGlow = new PointLight(0x0044aa, 0.8, 3.5)
     screenGlow.position.set(0, EYE_Y - 0.3, EYE_Z - 0.6)
 
-    // Stars disabled for performance testing
-    // this.scene.add(createStarField())
+    this.scene.add(createStarField())
 
     // ── Ship group (everything inside the ship moves with it) ─────────────
     this.shipGroup = new Group()
@@ -67,15 +66,15 @@ export class SceneManager {
     this.shipGroup.add(screenGlow)
 
     // Interior fill lights — increased for brighter cockpit
-    const interiorFill = new PointLight(0xbbccdd, 0.9, 28)
+    const interiorFill = new PointLight(0xbbccdd, 1.6, 32)
     interiorFill.position.set(0, 3.0, 7.0)
     this.shipGroup.add(interiorFill)
 
-    const backFill = new PointLight(0x99aabb, 0.6, 24)
+    const backFill = new PointLight(0x99aabb, 1.1, 28)
     backFill.position.set(0, 2.5, 13.0)
     this.shipGroup.add(backFill)
 
-    const frontFill = new PointLight(0x8899cc, 0.5, 12)
+    const frontFill = new PointLight(0x8899cc, 0.9, 16)
     frontFill.position.set(0, 1.5, 0)
     this.shipGroup.add(frontFill)
 
@@ -124,6 +123,16 @@ export class SceneManager {
     if (this.isSubshipLaunched) {
       this.shipGroup.attach(this.subship.group)
       this.subship.group.position.set(0, 0, SUBSHIP_OFFSET_Z)
+      this.subship.group.setRotationFromEuler(new Euler(0, 0, 0))
+      this.isSubshipLaunched = false
+    }
+  }
+
+  /** Attach back to shipGroup for ascent animation — places subship below the hatch. */
+  attachSubshipForAscent(): void {
+    if (this.isSubshipLaunched) {
+      this.shipGroup.attach(this.subship.group)
+      this.subship.group.position.set(0, -8.0, SUBSHIP_OFFSET_Z)
       this.subship.group.setRotationFromEuler(new Euler(0, 0, 0))
       this.isSubshipLaunched = false
     }

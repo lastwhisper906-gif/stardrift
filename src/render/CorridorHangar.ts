@@ -57,6 +57,8 @@ export class CorridorHangar {
   private hatchOffset = 0
   private hatchTarget = 0
 
+  get hatchProgress(): number { return this.hatchOffset }
+
   constructor() {
     this.group = new Group()
     this.buildCorridor()

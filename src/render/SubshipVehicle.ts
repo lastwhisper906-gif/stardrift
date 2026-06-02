@@ -126,14 +126,40 @@ export class SubshipVehicle {
 
     const floor = new Mesh(new PlaneGeometry(w, d), flr)
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, fy, cz); this.group.add(floor)
-    const ceil = new Mesh(new PlaneGeometry(w, d), wall)
-    ceil.rotation.x = Math.PI / 2; ceil.position.set(0, cy, cz); this.group.add(ceil)
+
+    // Ceiling: only rear half (front is open canopy glass)
+    const rearCeil = new Mesh(new PlaneGeometry(w, d * 0.5), wall)
+    rearCeil.rotation.x = Math.PI / 2
+    rearCeil.position.set(0, cy, (0 + SUBSHIP_ROOM.backZ) / 2)
+    this.group.add(rearCeil)
+
+    // Side walls: only rear structural section — front is open for side glass
+    const sideWallD = d * 0.45   // only rear 45% is solid wall
+    const sideWallZ = (0 + SUBSHIP_ROOM.backZ) / 2
     for (const sx of [-1, 1] as const) {
-      const sw = new Mesh(new BoxGeometry(0.06, h, d), wall)
-      sw.position.set(sx * SUBSHIP_ROOM.rightX, (fy + cy) / 2, cz); this.group.add(sw)
+      const sw = new Mesh(new BoxGeometry(0.06, h, sideWallD), wall)
+      sw.position.set(sx * SUBSHIP_ROOM.rightX, (fy + cy) / 2, sideWallZ)
+      this.group.add(sw)
     }
+
+    // Back wall
     const bwall = new Mesh(new BoxGeometry(w, h, 0.06), wall)
     bwall.position.set(0, (fy + cy) / 2, SUBSHIP_ROOM.backZ + 0.03); this.group.add(bwall)
+
+    // Side canopy glass panels (fighter-jet style — wrap around sides)
+    const sideMat = new MeshStandardMaterial({
+      color: 0x3366aa, transparent: true, opacity: 0.06,
+      roughness: 0.02, metalness: 0.0, side: 2, depthWrite: false,
+    })
+    // Each side pane covers front half of cockpit at shallow angle
+    const sidePaneD = d * 0.60   // front 60% of depth
+    const sidePaneZ = (SUBSHIP_ROOM.frontZ + 0) / 2   // front half center
+    for (const sx of [-1, 1] as const) {
+      const sp = new Mesh(new PlaneGeometry(sidePaneD, h * 0.82), sideMat)
+      sp.position.set(sx * SUBSHIP_ROOM.rightX, (fy + cy) / 2, sidePaneZ)
+      sp.rotation.y = sx * Math.PI / 2
+      this.group.add(sp)
+    }
   }
 
   // ── Cockpit interior ───────────────────────────────────────────────────────
@@ -169,26 +195,45 @@ export class SubshipVehicle {
     const col = new Mesh(new CylinderGeometry(0.055, 0.070, 0.42, 8), metal)
     col.position.set(0, fy + 0.21, -1.50); g.add(col)
 
-    // ── Windshield: thin frame + transparent glass ────────────────────────
-    const wz = fz + 0.24  // -3.76
+    // ── Windshield: wide fighter-jet style canopy ─────────────────────────
+    const wz = fz + 0.08  // -3.92  (pushed further forward for open feel)
     const glassMat = new MeshStandardMaterial({
-      color: 0x4477aa,
+      color: 0x3366aa,
       transparent: true,
-      opacity: 0.09,
+      opacity: 0.07,
       metalness: 0.0,
       roughness: 0.02,
-      side: 2,       // DoubleSide
+      side: 2,
       depthWrite: false,
     })
-    // Sill and thin frame
-    b(2.20, 0.22,      0.12, frame, 0,  fy + 0.19,         wz)  // sill
-    b(2.20, cy - 0.95, 0.12, frame, 0,  (0.95 + cy) / 2,   wz)  // top
-    b(0.08, 1.25,      0.12, frame, -1.06, 0.325,            wz)  // left pillar
-    b(0.08, 1.25,      0.12, frame,  1.06, 0.325,            wz)  // right pillar
-    // Glass pane
-    const glassPane = new Mesh(new PlaneGeometry(2.10, 1.25), glassMat)
-    glassPane.position.set(0, 0.325, wz)
+
+    // Sill (low, thin — let the glass breathe)
+    b(2.50, 0.14, 0.10, frame, 0, fy + 0.14, wz)
+
+    // Thin A-pillars only (no wide top/bottom bar — fighter-jet style)
+    b(0.06, 1.65, 0.10, frame, -1.22, 0.28, wz)   // left A-pillar
+    b(0.06, 1.65, 0.10, frame,  1.22, 0.28, wz)   // right A-pillar
+
+    // Minimal top rail
+    b(2.52, 0.10, 0.10, frame, 0, cy - 0.06, wz)
+
+    // Main glass — wide (2.40) and tall (1.65), centered high for good sightlines
+    const glassW = 2.40
+    const glassH = 1.65
+    const glassCY = fy + 0.14 + glassH / 2   // start just above sill
+    const glassPane = new Mesh(new PlaneGeometry(glassW, glassH), glassMat)
+    glassPane.position.set(0, glassCY, wz)
     g.add(glassPane)
+
+    // Upper canopy dome (continues glass upward over head — angled back)
+    const domeMat = new MeshStandardMaterial({
+      color: 0x2255aa, transparent: true, opacity: 0.055,
+      roughness: 0.02, metalness: 0.0, side: 2, depthWrite: false,
+    })
+    const dome = new Mesh(new PlaneGeometry(glassW, 0.70), domeMat)
+    dome.position.set(0, cy - 0.12, wz + 0.30)
+    dome.rotation.x = -0.55   // angled back over head like a canopy
+    g.add(dome)
 
     // ── HOTAS armrests at z = -2.55 — animated via hotasL / hotasR groups ──
     for (const sx of [-1, 1] as const) {

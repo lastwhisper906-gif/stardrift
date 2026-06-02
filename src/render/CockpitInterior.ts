@@ -69,11 +69,98 @@ export class CockpitInterior {
   }
 
   private buildStructure(): void {
-    // All structure removed — windshield is in CockpitRoom, only yoke remains
+    const FLOOR_Y = -1.1   // matches ROOM.floorY in CockpitRoom
+
+    const consoleMat = new MeshStandardMaterial({ color: 0x0d1018, metalness: 0.62, roughness: 0.52 })
+    const trimMat    = new MeshStandardMaterial({ color: 0x1c2234, metalness: 0.74, roughness: 0.26 })
+    const panelMat   = new MeshStandardMaterial({ color: 0x090e14, metalness: 0.28, roughness: 0.78 })
+    const dispMat    = new MeshStandardMaterial({ color: 0x001030, metalness: 0.05, roughness: 0.20, emissive: 0x002266, emissiveIntensity: 0.80 })
+    const glowEdge   = new MeshStandardMaterial({ color: 0x001540, metalness: 0.05, roughness: 0.20, emissive: 0x0033aa, emissiveIntensity: 0.90 })
+
+    // yokeGroup is at (0, -0.26, -0.46); base disc at y = -0.335
+    const consoleTopY = -0.28
+    const consoleH    = consoleTopY - FLOOR_Y    // 0.82
+    const consoleCY   = FLOOR_Y + consoleH / 2   // -0.69
+
+    // ── Center console pedestal ────────────────────────────────────────────
+    const body = new Mesh(new BoxGeometry(0.68, consoleH, 0.56), consoleMat)
+    body.position.set(0, consoleCY, -0.62)
+    this.group.add(body)
+
+    // Top trim cap
+    const topCap = new Mesh(new BoxGeometry(0.72, 0.032, 0.60), trimMat)
+    topCap.position.set(0, consoleTopY + 0.016, -0.62)
+    this.group.add(topCap)
+
+    // Foot plate on floor
+    const foot = new Mesh(new BoxGeometry(0.74, 0.024, 0.60), trimMat)
+    foot.position.set(0, FLOOR_Y + 0.012, -0.62)
+    this.group.add(foot)
+
+    // Yoke mounting collar
+    const collar = new Mesh(new CylinderGeometry(0.118, 0.112, 0.042, 14), trimMat)
+    collar.position.set(0, consoleTopY + 0.021, -0.46)
+    this.group.add(collar)
+    const collarInner = new Mesh(new CylinderGeometry(0.092, 0.092, 0.046, 14),
+      new MeshStandardMaterial({ color: 0x001540, metalness: 0.05, roughness: 0.20, emissive: 0x003388, emissiveIntensity: 0.75 }))
+    collarInner.position.set(0, consoleTopY + 0.023, -0.46)
+    this.group.add(collarInner)
+
+    // Front face inset panel
+    const frontPanel = new Mesh(new BoxGeometry(0.56, consoleH * 0.72, 0.022), panelMat)
+    frontPanel.position.set(0, consoleCY + 0.05, -0.335)
+    this.group.add(frontPanel)
+
+    // Three mini display screens on front face
+    for (let i = -1; i <= 1; i++) {
+      const disp = new Mesh(new BoxGeometry(0.13, 0.085, 0.018), dispMat)
+      disp.position.set(i * 0.17, FLOOR_Y + 0.52, -0.326)
+      this.group.add(disp)
+    }
+
+    // Status LEDs column
+    const ledColors = [0x00ff44, 0x0088ff, 0xffaa00]
+    ledColors.forEach((c, i) => {
+      const led = new Mesh(new BoxGeometry(0.020, 0.020, 0.013),
+        new MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.95 }))
+      led.position.set(0.27, FLOOR_Y + 0.36 + i * 0.08, -0.327)
+      this.group.add(led)
+    })
+
+    // Glow strip on top surface
+    const topGlow = new Mesh(new BoxGeometry(0.58, 0.009, 0.44), glowEdge)
+    topGlow.position.set(0, consoleTopY + 0.004, -0.68)
+    this.group.add(topGlow)
+
+    // ── Left side console (throttle pedestal) ─────────────────────────────
+    // leverGroup is at (-1.02, -0.22, -0.58)
+    const sideTopY  = -0.20
+    const sideH     = sideTopY - FLOOR_Y   // 0.90
+    const sideCY    = FLOOR_Y + sideH / 2  // -0.65
+
+    const sideCon = new Mesh(new BoxGeometry(0.32, sideH, 0.50), consoleMat)
+    sideCon.position.set(-1.02, sideCY, -0.62)
+    this.group.add(sideCon)
+
+    const sideTop = new Mesh(new BoxGeometry(0.34, 0.028, 0.52), trimMat)
+    sideTop.position.set(-1.02, sideTopY + 0.014, -0.62)
+    this.group.add(sideTop)
+
+    const sideFoot = new Mesh(new BoxGeometry(0.34, 0.022, 0.52), trimMat)
+    sideFoot.position.set(-1.02, FLOOR_Y + 0.011, -0.62)
+    this.group.add(sideFoot)
+
+    // Armrest bridge connecting center to side console
+    const bridge = new Mesh(new BoxGeometry(0.60, 0.048, 0.22), consoleMat)
+    bridge.position.set(-0.62, sideTopY + 0.024, -0.52)
+    this.group.add(bridge)
+    const bridgeGlow = new Mesh(new BoxGeometry(0.58, 0.008, 0.20), glowEdge)
+    bridgeGlow.position.set(-0.62, sideTopY + 0.050, -0.52)
+    this.group.add(bridgeGlow)
   }
 
   private buildDashboard(): void {
-    // Dashboard removed — only the yoke and throttle lever remain
+    // Retained for structure; main dashboard is now part of buildStructure console
   }
 
   private buildYokeAndArms(): void {

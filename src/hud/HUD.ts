@@ -45,6 +45,12 @@ export class HUD {
   private stationPanel!: HTMLElement
   private stationText!: HTMLElement
   private dockBanner!: HTMLElement
+  private dockPrompt!: HTMLElement
+  private landPrompt!: HTMLElement
+  private anchorPrompt!: HTMLElement
+  private mineralRow!: HTMLElement
+  private mineralFill!: HTMLElement
+  private mineralVal!: HTMLElement
   private evaBanner!: HTMLElement
   private dockTimer = 0
   private prevHull = 100
@@ -69,12 +75,13 @@ export class HUD {
     `
     this.root.appendChild(tlPanel)
 
-    // ── Top-right: Hull + Oxygen ─────────────────────────────────────────
+    // ── Top-right: Hull + Oxygen + Minerals ─────────────────────────────────
     const trPanel = document.createElement('div')
     trPanel.style.cssText = PANEL_BASE + 'top:14px;right:14px;min-width:180px;text-align:right;'
     trPanel.innerHTML = `
       <div>HULL &nbsp;${bar('hud-hull-fill', '#1a0000')} <span id="hud-hull-val" style="color:#88ffcc;margin-left:5px">100%</span></div>
       <div style="margin-top:2px">O₂ &nbsp;&nbsp;&nbsp;${bar('hud-o2-fill', '#00061a')} <span id="hud-o2-val" style="color:#88ccff;margin-left:5px">100%</span></div>
+      <div id="hud-min-row" style="margin-top:2px;display:none">MIN &nbsp;&nbsp;${bar('hud-min-fill', '#001a1a')} <span id="hud-min-val" style="color:#00ffcc;margin-left:5px">0</span></div>
     `
     this.root.appendChild(trPanel)
 
@@ -119,8 +126,50 @@ export class HUD {
       color:#ffaa00;font-size:13px;letter-spacing:2px;
       text-shadow:0 0 10px #ff8800;
     `
-    launchPrompt.textContent = '[E]  출격  LAUNCH'
+    launchPrompt.textContent = '[F]  출격  LAUNCH'
     this.root.appendChild(launchPrompt)
+
+    // ── Dock/return prompt (shown when subship flying near main ship) ──────
+    const dockPrompt = document.createElement('div')
+    dockPrompt.style.cssText = `
+      position:absolute;bottom:68px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(0,20,35,0.72);
+      border:1px solid rgba(0,200,255,0.50);
+      padding:8px 22px;border-radius:3px;
+      color:#00ccff;font-size:13px;letter-spacing:2px;
+      text-shadow:0 0 10px #00aaff;
+    `
+    dockPrompt.textContent = '[F]  복귀  DOCK'
+    this.root.appendChild(dockPrompt)
+
+    // ── Land prompt (subship flying near planet surface) ──────────────────
+    const landPrompt = document.createElement('div')
+    landPrompt.style.cssText = `
+      position:absolute;bottom:68px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(10,25,10,0.72);
+      border:1px solid rgba(0,220,100,0.50);
+      padding:8px 22px;border-radius:3px;
+      color:#00ee88;font-size:13px;letter-spacing:2px;
+      text-shadow:0 0 10px #00cc66;
+    `
+    landPrompt.textContent = '[F]  착지  LAND'
+    this.root.appendChild(landPrompt)
+
+    // ── Anchor / mining prompt (planet surface mode) ──────────────────────
+    const anchorPrompt = document.createElement('div')
+    anchorPrompt.style.cssText = `
+      position:absolute;bottom:108px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(0,20,15,0.72);
+      border:1px solid rgba(0,200,130,0.40);
+      padding:8px 22px;border-radius:3px;
+      color:#00ddaa;font-size:13px;letter-spacing:2px;
+      text-shadow:0 0 8px #00aa88;
+    `
+    anchorPrompt.textContent = '[E]  앵커 박기'
+    this.root.appendChild(anchorPrompt)
 
     // ── Repair prompt (secondary prompt above interact) ───────────────────
     const repairPrompt = document.createElement('div')
@@ -320,6 +369,12 @@ export class HUD {
     `
     this.root.appendChild(evaBanner)
     this.dockBanner     = dockBanner
+    this.dockPrompt     = dockPrompt
+    this.landPrompt     = landPrompt
+    this.anchorPrompt   = anchorPrompt
+    this.mineralRow     = document.getElementById('hud-min-row')!
+    this.mineralFill    = document.getElementById('hud-min-fill')!
+    this.mineralVal     = document.getElementById('hud-min-val')!
     this.evaBanner      = evaBanner
     this.gameOverlay    = gameOverlay
     this.modeIndicator  = modeIndicator
@@ -370,6 +425,7 @@ export class HUD {
         asteroid:  '⚠ ASTEROID INCOMING ⚠',
         blackhole: '⚠ GRAVITATIONAL ANOMALY ⚠',
         eva:       '⚠ EVA IN PROGRESS ⚠',
+        planet:    '◉ PLANET DETECTED ◉',
       }
       this.warnTextEl.textContent = labels[eventId] ?? '⚠ ALERT ⚠'
     } else {
@@ -383,6 +439,31 @@ export class HUD {
 
   setLaunchPrompt(show: boolean): void {
     this.launchPrompt.style.display = show ? 'block' : 'none'
+  }
+
+  setDockPrompt(show: boolean): void {
+    this.dockPrompt.style.display = show ? 'block' : 'none'
+  }
+
+  setLandPrompt(show: boolean): void {
+    this.landPrompt.style.display = show ? 'block' : 'none'
+  }
+
+  setAnchorPrompt(show: boolean, anchored: boolean): void {
+    this.anchorPrompt.style.display = show ? 'block' : 'none'
+    if (show) {
+      this.anchorPrompt.textContent = anchored
+        ? '홀드 [E]  채굴  MINE  ⛏'
+        : '[E]  앵커 박기  ANCHOR'
+    }
+  }
+
+  setMinerals(n: number): void {
+    this.mineralRow.style.display = 'block'
+    const pct = Math.min(100, n * 20)  // 5 minerals = 100%
+    this.mineralFill.style.width = `${pct}%`
+    this.mineralFill.style.background = '#00ffcc'
+    this.mineralVal.textContent = `${n}`
   }
 
   setRepairPrompt(show: boolean, hull: number): void {

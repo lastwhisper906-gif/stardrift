@@ -69,26 +69,58 @@ export class ShipExterior {
   private buildNose(): void {
     const noseMat  = hull(0x1a1e28, 0.60, 0.38)
     const dark     = hull(0x0e1018, 0.55, 0.55)
+    const accent   = hull(0x22283c, 0.65, 0.30)
+    const ridge    = hull(0x141824, 0.72, 0.24)
     const visorMat = hull(0x001828, 0.05, 0.10, 0x002840, 0.25)
+    const sensor   = hull(0x001520, 0.08, 0.28, 0x002a40, 0.55)
 
-    // Forward section (z: -6 → 2) — tapers inward
-    box(this.group, 7.5, 3.2, 5.0, noseMat, 0,  1.0, -1.5)  // cockpit base
-    box(this.group, 5.0, 2.6, 4.5, noseMat, 0,  1.5, -4.0)  // mid nose
-    box(this.group, 3.0, 1.8, 2.5, noseMat, 0,  1.2, -6.0)  // tip
+    // ── Main nose progression (6 sections, smooth taper z: +2 → -11) ─────
+    box(this.group, 8.5, 3.8, 4.5, noseMat, 0,  0.8,  0.0)   // base (joins fuselage)
+    box(this.group, 7.2, 3.5, 4.5, noseMat, 0,  1.0, -3.0)   // cockpit section
+    box(this.group, 5.8, 3.1, 3.5, noseMat, 0,  1.2, -6.0)   // mid-nose
+    box(this.group, 4.2, 2.7, 3.0, noseMat, 0,  1.25,-8.5)   // taper 1
+    box(this.group, 2.8, 2.1, 2.5, noseMat, 0,  1.15,-10.8)  // taper 2
+    box(this.group, 1.5, 1.4, 1.8, noseMat, 0,  0.9, -12.4)  // sharp tip
 
-    // Nose sensor pod (chin)
-    box(this.group, 2.4, 1.0, 4.0, dark,    0, -0.9, -3.5)
-    box(this.group, 1.4, 0.7, 1.5, dark,    0, -0.8, -5.5)
+    // ── Upper brow ridge (adds height and depth to the top) ────────────────
+    box(this.group, 5.5, 0.75, 5.8, accent,  0,  3.15, -1.5)  // main brow
+    box(this.group, 3.8, 0.55, 4.2, accent,  0,  3.05, -5.0)  // brow extension
+    box(this.group, 2.0, 0.38, 2.8, ridge,   0,  2.85, -8.0)  // brow taper
 
-    // Cockpit viewport strip (front window opening ~= CockpitRoom's front window)
+    // ── Side cheek panels (give nose 3D volume and width) ─────────────────
+    for (const sx of [-1, 1] as const) {
+      box(this.group, 0.52, 2.9, 5.5, accent,  sx * 4.1, 0.9, -2.2)   // main cheek
+      box(this.group, 0.42, 2.4, 3.5, noseMat, sx * 3.2, 1.1, -5.8)   // cheek taper
+      box(this.group, 0.30, 1.8, 2.5, noseMat, sx * 2.1, 1.05,-9.0)   // cheek tip
+
+      // Intake recess on cheek
+      box(this.group, 0.36, 0.85, 2.4, dark,   sx * 3.9, 0.35, -1.8)
+
+      // Structural ridge line
+      box(this.group, 0.10, 0.20, 5.0, ridge,  sx * 3.5, 2.25, -3.0)
+    }
+
+    // ── Lower chin / sensor pods ───────────────────────────────────────────
+    box(this.group, 3.0, 1.15, 5.5, dark,   0, -1.0, -2.5)   // main chin
+    box(this.group, 2.2, 0.90, 3.5, dark,   0, -0.90,-5.8)   // chin mid
+    box(this.group, 1.4, 0.65, 2.5, dark,   0, -0.75,-8.8)   // chin taper
+    box(this.group, 0.6, 0.35, 0.7, sensor, 0, -1.40,-9.5)   // sensor emitter
+
+    // ── Cockpit viewport strip (keep aligned with CockpitRoom interior) ───
     box(this.group, 6.4, 2.5, 0.12, visorMat, 0, 1.4, -1.45)
 
-    // Frame pillars around viewport
+    // ── Frame pillars (unchanged — match interior room) ───────────────────
     const frameMat = hull(0x151820, 0.7, 0.3)
     box(this.group, 0.18, 2.6, 0.14, frameMat, -3.2, 1.4, -1.44)
     box(this.group, 0.18, 2.6, 0.14, frameMat,  3.2, 1.4, -1.44)
     box(this.group, 6.8, 0.18, 0.14, frameMat,  0, 2.7, -1.44)
     box(this.group, 6.8, 0.18, 0.14, frameMat,  0, 0.1, -1.44)
+
+    // ── Panel seam lines ────────────────────────────────────────────────────
+    const seam = hull(0x0a0c12, 0.40, 0.80)
+    for (const z of [-1.0, -4.2, -7.5]) {
+      box(this.group, 5.8, 0.055, 0.08, seam, 0, 1.8, z)
+    }
   }
 
   private buildWings(): void {

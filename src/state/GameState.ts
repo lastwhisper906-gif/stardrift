@@ -8,6 +8,7 @@ export interface ShipState {
   throttle: number
   oxygen: number
   hull: number
+  minerals: number
 }
 
 export type GamePhase = 'PILOTING' | 'IN_EVENT'
@@ -28,6 +29,7 @@ export function createInitialGameState(): GameState {
       throttle: 0,
       oxygen: 100,
       hull: 100,
+      minerals: 0,
     },
     phase: 'PILOTING',
     tick: 0,
