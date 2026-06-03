@@ -4,12 +4,12 @@ import type { ClimberInput } from '../input/InputTypes.js'
 import type { ResourceNode } from '../render/PlanetMesh.js'
 import { PLANET_RADIUS, SURFACE_FOOT } from '../render/PlanetMesh.js'
 
-export const SWING_REACH    = 2.8     // metres advanced per axe plant
+export const SWING_REACH    = 3.8     // metres advanced per axe plant
 export const PULL_DURATION  = 0.38    // seconds to glide to new anchor
 export const SWING_COOLDOWN = 0.55    // arm fatigue between swings
 export const SLIDE_SPEED    = 0.6     // m/s slide-down when no anchor
 export const MINING_STRIKES = 3       // strikes to collect 1 ore
-export const MINE_NODE_DIST = 6.0     // metres — axe reach to mine node
+export const MINE_NODE_DIST = 7.5     // metres — axe reach to mine node
 
 // Pre-allocated scratch
 const _up      = new Vector3()
@@ -90,8 +90,11 @@ export function updateClimbing(
 
   // ── Axe swing (only when not already pulling and cooldown ready) ──────────
   const canSwing = s.swingCooldown <= 0 && s.pullProgress === 0
-  const swingLeft  = input.leftAxe  && s.activeAxe === 'left'  && canSwing
-  const swingRight = input.rightAxe && s.activeAxe === 'right' && canSwing
+  // advance (W key) auto-selects whichever axe is active — same as pressing Q or E
+  const leftTrigger  = input.leftAxe  || (input.advance && s.activeAxe === 'left')
+  const rightTrigger = input.rightAxe || (input.advance && s.activeAxe === 'right')
+  const swingLeft  = leftTrigger  && s.activeAxe === 'left'  && canSwing
+  const swingRight = rightTrigger && s.activeAxe === 'right' && canSwing
 
   let minedNode: ResourceNode | null = null
   let minerals  = -1

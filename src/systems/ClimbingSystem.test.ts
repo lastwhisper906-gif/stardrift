@@ -15,10 +15,10 @@ function onSurface(): Vector3 {
 
 function swing(axe: 'left' | 'right') {
   return axe === 'left'
-    ? { leftAxe: true,  rightAxe: false, rotateLeft: false, rotateRight: false }
-    : { leftAxe: false, rightAxe: true,  rotateLeft: false, rotateRight: false }
+    ? { leftAxe: true,  rightAxe: false, rotateLeft: false, rotateRight: false, advance: false }
+    : { leftAxe: false, rightAxe: true,  rotateLeft: false, rotateRight: false, advance: false }
 }
-const NO_INPUT = { leftAxe: false, rightAxe: false, rotateLeft: false, rotateRight: false }
+const NO_INPUT = { leftAxe: false, rightAxe: false, rotateLeft: false, rotateRight: false, advance: false }
 
 describe('updateClimbing', () => {
   it('swinging left axe advances character and starts pull', () => {

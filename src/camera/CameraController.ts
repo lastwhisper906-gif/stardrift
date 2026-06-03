@@ -52,15 +52,20 @@ export class CameraController {
     this.shakeAmt = Math.max(this.shakeAmt, intensity)
   }
 
-  update(character: CharacterController, dt = 0.016, planetCtx?: { charWorldPos: Vector3; planetCenter: Vector3; rotateLeft: boolean; rotateRight: boolean }): void {
+  update(character: CharacterController, dt = 0.016, planetCtx?: { charWorldPos: Vector3; planetCenter: Vector3; rotateLeft: boolean; rotateRight: boolean; mouseDX?: number; mouseDY?: number }): void {
     // ── Planet surface — 1st-person ice-climbing ──────────────────────────
     if (this.mode === 'planet_surface' && planetCtx) {
       const { charWorldPos, planetCenter, rotateLeft, rotateRight } = planetCtx
 
-      // Rotate camera yaw with A/D
-      const YAW_SPEED = 1.8
+      // Rotate yaw: A/D keyboard OR mouse horizontal
+      const YAW_SPEED       = 1.8
+      const MOUSE_SENS      = 0.0022
       if (rotateLeft)  this.camYaw -= YAW_SPEED * dt
       if (rotateRight) this.camYaw += YAW_SPEED * dt
+      if (planetCtx.mouseDX) this.camYaw   += planetCtx.mouseDX * MOUSE_SENS
+      // Subtract DY: movementY is positive when mouse moves DOWN, which should look DOWN (negative pitch)
+      if (planetCtx.mouseDY) this.camPitch  = Math.max(-1.3, Math.min(0.8,
+        this.camPitch - planetCtx.mouseDY * MOUSE_SENS))
 
       const up  = this._tmpV.copy(charWorldPos).sub(planetCenter).normalize()
 
@@ -74,11 +79,14 @@ export class CameraController {
       )
 
       // Facing direction projected onto sphere tangent plane
-      const cf  = new Vector3(-Math.sin(this.camYaw), 0, -Math.cos(this.camYaw))
+      const cf   = new Vector3(-Math.sin(this.camYaw), 0, -Math.cos(this.camYaw))
       const fwdT = cf.clone().addScaledVector(up, -up.dot(cf)).normalize()
 
-      // Look target: forward along surface in world space
-      const lookTarget = charWorldPos.clone().addScaledVector(up, SURFACE_EYE).addScaledVector(fwdT, 5)
+      // Look target: forward + vertical pitch (up/down look on the ice surface)
+      const lookTarget = charWorldPos.clone()
+        .addScaledVector(up, SURFACE_EYE)
+        .addScaledVector(fwdT, 5 * Math.cos(this.camPitch))
+        .addScaledVector(up,   5 * Math.sin(this.camPitch))
       this.camera.lookAt(lookTarget)
 
       this.posReady = false

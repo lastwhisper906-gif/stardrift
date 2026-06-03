@@ -10,8 +10,9 @@ export interface RawInput {
 }
 
 export interface ClimberInput {
-  leftAxe:    boolean   // Q — plant left ice axe
-  rightAxe:   boolean   // E — plant right ice axe
+  leftAxe:    boolean   // Q — plant left ice axe explicitly
+  rightAxe:   boolean   // E — plant right ice axe explicitly
+  advance:    boolean   // W — auto-swing the currently active axe (WASD forward)
   rotateLeft:  boolean  // A — rotate camera yaw left
   rotateRight: boolean  // D — rotate camera yaw right
 }

@@ -4,6 +4,10 @@ export class KeyboardInput {
   private readonly keys: Record<string, boolean> = {}
   private readonly justPressedKeys = new Set<string>()
 
+  private mouseDX = 0
+  private mouseDY = 0
+  private pointerLocked = false
+
   constructor() {
     window.addEventListener('keydown', (e) => {
       if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) {
@@ -15,7 +19,35 @@ export class KeyboardInput {
     window.addEventListener('keyup', (e) => {
       this.keys[e.code] = false
     })
+    window.addEventListener('mousemove', (e) => {
+      if (this.pointerLocked) {
+        this.mouseDX += e.movementX
+        this.mouseDY += e.movementY
+      }
+    })
+    document.addEventListener('pointerlockchange', () => {
+      this.pointerLocked = !!document.pointerLockElement
+    })
   }
+
+  requestPointerLock(): void {
+    const canvas = document.querySelector('canvas')
+    if (canvas && !this.pointerLocked) canvas.requestPointerLock()
+  }
+
+  releasePointerLock(): void {
+    if (document.pointerLockElement) document.exitPointerLock()
+  }
+
+  /** Returns accumulated mouse movement since last call and resets the buffer. */
+  consumeMouseDelta(): { dx: number; dy: number } {
+    const d = { dx: this.mouseDX, dy: this.mouseDY }
+    this.mouseDX = 0
+    this.mouseDY = 0
+    return d
+  }
+
+  isPointerLocked(): boolean { return this.pointerLocked }
 
   /**
    * PILOTING mode controls:
@@ -48,12 +80,13 @@ export class KeyboardInput {
     }
   }
 
-  /** Planet surface climbing: Q=left axe, E=right axe, A/D=rotate */
+  /** Planet surface climbing: W=advance, Q=left axe, E=right axe, A/D=rotate */
   getClimberInput(): ClimberInput {
     const k = this.keys
     return {
       leftAxe:    !!(k['KeyQ']),
       rightAxe:   !!(k['KeyE']),
+      advance:    !!(k['KeyW'] || k['ArrowUp']),
       rotateLeft:  !!(k['KeyA'] || k['ArrowLeft']),
       rotateRight: !!(k['KeyD'] || k['ArrowRight']),
     }

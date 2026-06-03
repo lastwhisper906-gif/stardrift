@@ -21,6 +21,10 @@ function buildAxe(flipX: number): Group {
   const metal = new MeshStandardMaterial({ color: 0x3a3a4a, metalness: 0.88, roughness: 0.22 })
   const grip  = new MeshStandardMaterial({ color: 0x1a1208, metalness: 0.05, roughness: 0.92 })
   const spike = new MeshStandardMaterial({ color: 0x8899aa, metalness: 0.95, roughness: 0.08 })
+  // depthTest=false: arm/sleeve must always render on top of the planet surface mesh
+  const suit  = new MeshStandardMaterial({ color: 0x252d3a, metalness: 0.12, roughness: 0.82, depthTest: false })
+  const cuffM = new MeshStandardMaterial({ color: 0x1a2030, metalness: 0.38, roughness: 0.55, depthTest: false })
+  const glove = new MeshStandardMaterial({ color: 0x141c28, metalness: 0.10, roughness: 0.88, depthTest: false })
 
   // Handle (cylinder, slightly tapered)
   const handle = new Mesh(new CylinderGeometry(0.014, 0.020, 0.44, 8), grip)
@@ -47,6 +51,22 @@ function buildAxe(flipX: number): Group {
     g.add(wrap)
   }
 
+  // Gloved hand gripping the handle (just below grip wrap)
+  const hand = new Mesh(new CylinderGeometry(0.028, 0.030, 0.10, 8), glove)
+  hand.position.set(flipX * 0.004, -0.20, 0)
+  g.add(hand)
+
+  // Wrist cuff (spacesuit cuff ring at bottom of handle)
+  const cuff = new Mesh(new CylinderGeometry(0.032, 0.032, 0.030, 10), cuffM)
+  cuff.position.set(0, -0.26, 0)
+  g.add(cuff)
+
+  // Forearm sleeve — comes from below the screen up to the cuff
+  const sleeve = new Mesh(new CylinderGeometry(0.028, 0.038, 0.38, 8), suit)
+  sleeve.position.set(flipX * 0.012, -0.49, 0.04)
+  sleeve.rotation.x = 0.22  // slight forward tilt for natural arm angle
+  g.add(sleeve)
+
   return g
 }
 
@@ -61,6 +81,7 @@ export class IceAxeView {
 
   constructor() {
     this.group = new Group()
+    this.group.renderOrder = 999
 
     this.leftAxe  = buildAxe(-1)
     this.rightAxe = buildAxe(1)

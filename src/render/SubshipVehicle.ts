@@ -30,16 +30,15 @@ export const SUBSHIP_ROOM = {
 } as const
 
 /**
- * Camera eye: SUBSHIP_LOCAL = (0, 0.30, -2.0) in subship local.
- * FOV: 92° (set in CameraController.setMode).
+ * Camera eye: SUBSHIP_LOCAL = (0, 0.55, -3.35) in subship local.
+ * FOV: 110° (set in CameraController.setMode).
  * Camera orientation: lookAt toward subship nose (z=-20 in subship local).
  *
- * Layout — everything in SUBSHIP LOCAL z (camera at z=-2.0, nose at z=-4.0):
+ * Layout — everything in SUBSHIP LOCAL z (camera at z=-3.35, nose at z=-4.0):
  *
  *   z = -1.4  seat (BEHIND camera — toward tail)
- *   z = -2.55 HOTAS armrests          (0.55 m ahead)
- *   z = -2.72 dashboard front face    (0.72 m ahead)
- *   z = -3.76 windshield bulkhead     (1.76 m ahead)
+ *   z = -3.60 HOTAS armrests          (0.25 m ahead, y=0.34 puts them at bottom of FOV)
+ *   z = -3.92 windshield bulkhead     (0.57 m ahead)
  */
 export class SubshipVehicle {
   readonly group:          Group
@@ -49,9 +48,10 @@ export class SubshipVehicle {
 
   private hotasL!: Group
   private hotasR!: Group
-  private hotasYaw   = 0
+  private hotasYaw    = 0
   private hotasPitchL = 0
   private hotasPitchR = 0
+  private readonly legGroups: Group[] = []
 
   constructor() {
     this.group = new Group()
@@ -61,6 +61,7 @@ export class SubshipVehicle {
     this.group.add(this.exteriorGroup)
 
     this.buildExterior()
+    this.buildLegs()
     this.buildRoom()
     this.buildCockpit()
 
@@ -82,6 +83,54 @@ export class SubshipVehicle {
 
   setExteriorVisible(v: boolean): void {
     this.exteriorGroup.visible = v
+  }
+
+  /**
+   * Deploy (or retract) landing legs.
+   * @param t  0 = tucked flush against hull, 1 = fully extended for touchdown
+   */
+  deployLegs(t: number): void {
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+    const signs = [-1, 1, -1, 1]   // left, right, left, right
+    for (let i = 0; i < this.legGroups.length; i++) {
+      const sign    = signs[i]!
+      const tucked  = sign * 1.30   // folded against hull
+      const extended = sign * 0.28  // angled ~80° out from hull
+      this.legGroups[i]!.rotation.z = tucked + (extended - tucked) * ease
+    }
+  }
+
+  // ── Landing legs ───────────────────────────────────────────────────────────
+  private buildLegs(): void {
+    const strut = mat(0x1a1e2c, 0.82, 0.22)
+    const foot  = mat(0x0e1018, 0.40, 0.65)
+
+    // Positions: [x-side, z-position] for four legs
+    const positions: Array<[number, number]> = [[-1, -2.0], [1, -2.0], [-1, 1.8], [1, 1.8]]
+    const signs = [-1, 1, -1, 1]
+
+    for (let i = 0; i < positions.length; i++) {
+      const [sx, sz] = positions[i]!
+      const sign = signs[i]!
+
+      const legGroup = new Group()
+      legGroup.position.set(sx * 0.85, -0.28, sz)
+
+      // Main strut
+      const strutMesh = new Mesh(new CylinderGeometry(0.018, 0.024, 0.52, 6), strut)
+      strutMesh.position.set(sx * 0.18, -0.26, 0)
+      legGroup.add(strutMesh)
+
+      // Foot pad
+      const footMesh = new Mesh(new BoxGeometry(0.18, 0.030, 0.14), foot)
+      footMesh.position.set(sx * 0.36, -0.54, 0)
+      legGroup.add(footMesh)
+
+      // Start tucked against hull
+      legGroup.rotation.z = sign * 1.30
+      this.exteriorGroup.add(legGroup)
+      this.legGroups.push(legGroup)
+    }
   }
 
   // ── Exterior hull ──────────────────────────────────────────────────────────
@@ -235,11 +284,11 @@ export class SubshipVehicle {
     dome.rotation.x = -0.55   // angled back over head like a canopy
     g.add(dome)
 
-    // ── HOTAS armrests at z = -2.55 — animated via hotasL / hotasR groups ──
+    // ── HOTAS armrests at z = -3.60 — animated via hotasL / hotasR groups ──
     for (const sx of [-1, 1] as const) {
       const gx = sx * 0.46
-      const gy = fy + 0.46   // = -0.14
-      const gz = -2.58
+      const gy = fy + 0.94   // = 0.34 — elbow height; visible at bottom of 110° FOV
+      const gz = -3.60       // 0.25 m ahead of camera eye at z = -3.35
       // Static armrest platform
       b(0.26, 0.055, 0.38, panel, gx, gy - 0.028, gz)
 
@@ -268,6 +317,11 @@ export class SubshipVehicle {
       if (sx < 0) this.hotasL = stickGroup
       else        this.hotasR = stickGroup
     }
+
+    // ── Instrument shelf just ahead of camera (z = -3.68 to -3.80) ──────
+    b(2.10, 0.05, 0.18, panel,  0, fy + 0.66, -3.74)   // shelf surface
+    b(2.08, 0.16, 0.04, mfd,    0, fy + 0.62, -3.68)   // glowing MFD screen strip
+    b(2.10, 0.12, 0.04, border, 0, fy + 0.74, -3.68)   // top trim above screen
 
     // ── Lighting — 2 lights cover the subship cockpit ─────────────────────
     const fill = new PointLight(0x6688cc, 1.60, 8.0)

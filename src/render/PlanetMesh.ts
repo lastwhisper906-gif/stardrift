@@ -98,6 +98,23 @@ export class PlanetMesh {
     // No embedded light — the scene's DirectionalLight creates a proper lit/dark gradient
   }
 
+  /**
+   * Spawn an extra ore node at an arbitrary world-space position.
+   * Call after the group has been positioned in the scene.
+   */
+  addNodeAt(worldPos: Vector3): void {
+    const crystal = new MeshStandardMaterial({
+      color: 0x00ffcc, emissive: 0x00bbaa, emissiveIntensity: 1.2,
+      roughness: 0.10, metalness: 0.80,
+    })
+    const localPos = worldPos.clone()
+    this.group.worldToLocal(localPos)
+    const mesh = new Mesh(new SphereGeometry(2.0, 8, 6), crystal)
+    mesh.position.copy(localPos)
+    this.group.add(mesh)
+    this.nodes.push({ worldPos: worldPos.clone(), collected: false, mesh })
+  }
+
   /** Call each frame — pulses uncollected node glow */
   update(dt: number): void {
     this.pulseTime += dt

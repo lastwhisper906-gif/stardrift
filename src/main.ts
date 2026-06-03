@@ -19,6 +19,8 @@ import { SURFACE_FOOT, SURFACE_EYE } from './render/PlanetMesh.js'
 import { applyPlanetDrag, resolvePlanetCollision } from './systems/PlanetSystem.js'
 import { updateClimbing } from './systems/ClimbingSystem.js'
 import { IceAxeView } from './render/IceAxeView.js'
+import { SubshipArmsView } from './render/SubshipArmsView.js'
+import { TetherView } from './render/TetherView.js'
 import { createInitialSurfaceState } from './state/GameState.js'
 import { HUD } from './hud/HUD.js'
 import { CharacterController } from './character/CharacterController.js'
@@ -54,10 +56,35 @@ scene.shipGroup.add(character.mesh)
 const camCtrl = new CameraController(scene.camera, scene.shipGroup)
 camCtrl.setSubshipGroup(scene.subship.group)
 
+// Debug helper — exposed for automated testing only, harmless in prod
+;(window as unknown as Record<string, unknown>).__debug = {
+  getPos:   () => ({ x: character.position.x, z: character.position.z }),
+  getMode:  () => camCtrl.mode,
+  getCamYaw:() => camCtrl.getCamYaw(),
+  nearHelm: () => character.isNearHelm(),
+  nearSub:  () => character.isNearSubship(),
+  getLaunchPhase: () => launchPhase,
+  getSubshipPos:  () => subshipState
+    ? { x: +subshipState.position[0].toFixed(1), z: +subshipState.position[2].toFixed(1), throttle: +subshipState.throttle.toFixed(2) }
+    : null,
+  teleportToSubship: () => {
+    character.position.set(2.2, character.position.y, 39)
+    camCtrl.setWalkYaw(Math.PI)
+  },
+}
+
 // Ice axe view — 1st-person axes parented to camera (planet_surface mode)
 const iceAxeView = new IceAxeView()
 iceAxeView.group.visible = false
 scene.camera.add(iceAxeView.group)
+
+// Subship pilot arms — 1st-person hands parented to camera (subship_piloting mode)
+const subshipArms = new SubshipArmsView()
+scene.camera.add(subshipArms.group)
+
+// Tether attachment animation — plays during 'tethering' landing phase
+const tetherView = new TetherView()
+scene.camera.add(tetherView.group)
 
 // Start in WALKING mode: hide 1st-person arm meshes
 scene.cockpit.setArmsVisible(false)
@@ -99,6 +126,7 @@ const DESCENT_TARGET  = -8.0
 const LAUNCH_ANIM_SPD = 4.5   // m/s
 
 let subshipState: SubshipState | null = null
+let landPromptActive = false   // hysteresis flag — prevents prompt flickering
 
 // Pre-allocated vectors — reused every frame, zero GC pressure
 const _hangarWP    = new Vector3()
@@ -106,6 +134,8 @@ const _surfUp      = new Vector3()
 const _camFwd      = new Vector3()
 const _fwdTangent  = new Vector3()
 const _rgtTangent  = new Vector3()
+const _shipUpVec   = new Vector3(0, 1, 0)   // local +y of the sub-ship
+const _landQuat    = new Quaternion()        // scratch for landing orientation
 
 // ── Planet surface exploration ────────────────────────────────────────────────
 let planetLandPhase: 'none' | 'on_surface' = 'none'
@@ -115,6 +145,7 @@ const _charLocalTmp  = new Vector3()
 let lastSwinging: 'left' | 'right' | 'none' = 'none'
 let prevLeftAxe  = false
 let prevRightAxe = false
+let prevAdvance  = false
 
 // Display-smoothed position/rotation (lerped each frame for buttery movement)
 let dispX = 0, dispY = 0, dispZ = 0
@@ -156,7 +187,10 @@ function resetGame(): void {
   hud.hideEndScreen()
   planetLandPhase          = 'none'
   iceAxeView.group.visible = false
-  lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false
+  subshipArms.setVisible(false)
+  landPromptActive = false
+  scene.subship.deployLegs(0)
+  lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false; prevAdvance = false
 }
 
 const TARGET_MS = 1000 / 60   // ~16.67 ms — cap render at 60 fps on high-refresh displays
@@ -189,9 +223,12 @@ function loop(): void {
 
   // ── Visibility culling — hide geometry not reachable from the current camera ─
   const inInterior = mode === 'walking' || mode === 'piloting'
+  const launchInProgress = launchPhase === 'hatch_open' || launchPhase === 'descending'
   cockpitRoom.group.visible          = inInterior
   scene.cockpit.group.visible        = inInterior
-  scene.corridorHangar.group.visible = mode === 'walking'
+  // Show hangar bay walls during walking AND during launch descent so the pilot
+  // sees the bay opening and the ship dropping through the hatch.
+  scene.corridorHangar.group.visible = mode === 'walking' || launchInProgress
 
   // ── Dismiss title screen on any key ──────────────────────────────────────
   // (handled below via keyboard polling — any consumeJustPressed drains the queue)
@@ -221,6 +258,7 @@ function loop(): void {
       hud.setInteractPrompt(false)
       scene.subship.setExteriorVisible(false)
       scene.subship.cockpitInterior.setArmsVisible(true)
+      subshipArms.setVisible(true)
       if (launchPhase === 'docked') hud.setLaunchPrompt(true)
     } else if (mode === 'subship_piloting' && launchPhase === 'docked') {
       // ── Start launch sequence ───────────────────────────────────────────
@@ -230,7 +268,7 @@ function loop(): void {
       hud.setLaunchPrompt(false)
     } else if (mode === 'subship_piloting' && launchPhase === 'flying'
             && planetLandPhase === 'none'
-            && planetEvent.isNearSurface(scene.subship.group.position)) {
+            && landPromptActive) {
       // ── Begin landing sequence (touching_down phase) ─────────────────────
       planetLandPhase = 'on_surface'   // outer guard — prevents re-entry
       hud.setLandPrompt(false)
@@ -259,7 +297,9 @@ function loop(): void {
       planetLandPhase  = 'none'
       character.mesh.visible   = true
       iceAxeView.group.visible = false
+      keyboard.releasePointerLock()
       camCtrl.setMode('subship_piloting')
+      subshipArms.setVisible(true)
       scene.subship.setExteriorVisible(false)
       planetEvent.markComplete()
       hud.setAnchorPrompt(false, false)
@@ -302,6 +342,7 @@ function loop(): void {
       character.mesh.visible = true
       scene.subship.setExteriorVisible(true)
       scene.subship.cockpitInterior.setArmsVisible(false)
+      subshipArms.setVisible(false)
     }
   }
 
@@ -313,12 +354,15 @@ function loop(): void {
     if (st0.surface.landingPhase === 'on_surface') {
       const climbInput = keyboard.getClimberInput()
 
-      // Edge-detect axe swings (only trigger on the frame the key is first pressed)
-      const leftJust  = climbInput.leftAxe  && !prevLeftAxe
-      const rightJust = climbInput.rightAxe && !prevRightAxe
+      // Edge-detect axe swings — fire once per key press, not every frame.
+      // 'advance' (W) is also edge-detected so each W tap = one axe swing.
+      const leftJust    = climbInput.leftAxe  && !prevLeftAxe
+      const rightJust   = climbInput.rightAxe && !prevRightAxe
+      const advanceJust = climbInput.advance  && !prevAdvance
       prevLeftAxe  = climbInput.leftAxe
       prevRightAxe = climbInput.rightAxe
-      const edgeInput = { ...climbInput, leftAxe: leftJust, rightAxe: rightJust }
+      prevAdvance  = climbInput.advance
+      const edgeInput = { ...climbInput, leftAxe: leftJust, rightAxe: rightJust, advance: advanceJust }
 
       const result = updateClimbing(
         st0.surface,
@@ -370,6 +414,7 @@ function loop(): void {
   } else if (mode === 'subship_piloting') {
     const subInput = keyboard.getPilotInput()
     scene.subship.update(subInput, dt)   // animate HOTAS sticks
+    subshipArms.update(subInput.yaw, subInput.throttleDelta, subInput.pitch, dt)
     if (launchPhase === 'flying' && subshipState) {
       subshipState = updateSubship(subshipState, subInput, dt)
 
@@ -476,27 +521,34 @@ function loop(): void {
   // ── Planet landing animation ─────────────────────────────────────────────
   {
     const surf = room.getState().surface
-    const TOUCHDOWN_DUR  = 1.8   // seconds for subship to descend to surface
-    const DISEMBARK_DUR  = 1.4   // seconds for camera to lerp to surface eye
+    const TOUCHDOWN_DUR = 1.8   // seconds for subship to descend to surface
+    const DISEMBARK_DUR = 1.4   // seconds for camera to lerp to surface eye
 
     if (surf.landingPhase === 'touching_down') {
       const progress = Math.min(1, surf.landingProgress + dt / TOUCHDOWN_DUR)
       room.setState({ surface: { ...surf, landingProgress: progress } })
 
       // Descend subship from stop radius toward surface
-      const center     = planetEvent.getPlanetCenter()
-      const subPos     = scene.subship.group.position
-      const toSurface  = subPos.clone().sub(center).normalize()
-      const targetDist = PLANET_RADIUS + SURFACE_EYE + 0.5   // rests just above surface
+      const center      = planetEvent.getPlanetCenter()
+      const subPos      = scene.subship.group.position
+      const toSurface   = subPos.clone().sub(center).normalize()
+      const targetDist  = PLANET_RADIUS + SURFACE_EYE + 0.5
       const currentDist = subPos.distanceTo(center)
-      const newDist    = currentDist + (targetDist - currentDist) * Math.min(1, dt * 2.5)
+      const newDist     = currentDist + (targetDist - currentDist) * Math.min(1, dt * 2.5)
       scene.subship.group.position.copy(center).addScaledVector(toSurface, newDist)
-      if (subshipState) subshipState = { ...subshipState, position: [subPos.x, subPos.y, subPos.z] as [number,number,number] }
+      if (subshipState) subshipState = { ...subshipState, position: [subPos.x, subPos.y, subPos.z] as [number, number, number] }
+
+      // Gradually orient sub-ship so its belly faces the planet (up = surface normal)
+      const surfUp = scene.subship.group.position.clone().sub(center).normalize()
+      _landQuat.setFromUnitVectors(_shipUpVec, surfUp)
+      scene.subship.group.quaternion.slerp(_landQuat, Math.min(1, dt * 1.8))
+
+      // Deploy landing legs over the descent
+      scene.subship.deployLegs(progress)
 
       if (progress >= 1) {
-        // Touchdown complete → begin camera disembark lerp
-        const center2   = planetEvent.getPlanetCenter()
-        const toCenter  = scene.subship.group.position.clone().sub(center2)
+        const center2  = planetEvent.getPlanetCenter()
+        const toCenter = scene.subship.group.position.clone().sub(center2)
         charWorldPos.copy(center2).addScaledVector(toCenter.normalize(), PLANET_RADIUS + FOOT_OFFSET)
         camCtrl.setWalkYaw(Math.PI + Math.atan2(toCenter.x, toCenter.z))
         camCtrl.beginDisembarkLerp()
@@ -511,11 +563,25 @@ function loop(): void {
       camCtrl.applyDisembarkLerp(charWorldPos, planetEvent.getPlanetCenter(), ease)
 
       if (progress >= 1) {
-        // Disembark complete → full planet_surface mode
+        // Camera has reached surface eye — enter tethering phase
         character.mesh.visible = false
+        room.setState({ surface: { ...room.getState().surface, landingPhase: 'tethering', landingProgress: 0 } })
+      }
+    } else if (surf.landingPhase === 'tethering') {
+      // First frame of tethering: trigger the animation
+      if (surf.landingProgress === 0) {
+        tetherView.trigger()
+        room.setState({ surface: { ...surf, landingProgress: 1 } })
+      }
+      tetherView.update(dt)
+
+      if (tetherView.isComplete) {
+        // Tether attached — enter full planet_surface mode
         camCtrl.setMode('planet_surface')
+        keyboard.requestPointerLock()
         hud.setAnchorPrompt(true, false)
         const landPos: [number, number, number] = [charWorldPos.x, charWorldPos.y, charWorldPos.z]
+        planetEvent.scatterNodesNear(charWorldPos)
         room.setState({ surface: { ...createInitialSurfaceState(),
           landingPhase: 'on_surface', landingProgress: 1,
           leftAnchorPos: landPos, rightAnchorPos: landPos } })
@@ -547,13 +613,16 @@ function loop(): void {
   // during 'touching_down' the subship camera handles it,
   // during 'disembarking' applyDisembarkLerp (called above) handles it.
   const _isFullySurface = mode === 'planet_surface' && _surfLandPhase === 'on_surface'
-  const _climbKeys = _isFullySurface ? keyboard.getClimberInput() : undefined
+  const _climbKeys  = _isFullySurface ? keyboard.getClimberInput() : undefined
+  const _mouseDelta = _isFullySurface ? keyboard.consumeMouseDelta() : { dx: 0, dy: 0 }
   const _planetCtx = _isFullySurface
     ? { charWorldPos, planetCenter: planetEvent.getPlanetCenter(),
-        rotateLeft: !!_climbKeys?.rotateLeft, rotateRight: !!_climbKeys?.rotateRight }
+        rotateLeft: !!_climbKeys?.rotateLeft, rotateRight: !!_climbKeys?.rotateRight,
+        ...(_mouseDelta.dx !== 0 ? { mouseDX: _mouseDelta.dx } : {}),
+        ...(_mouseDelta.dy !== 0 ? { mouseDY: _mouseDelta.dy } : {}) }
     : undefined
-  // Only call camCtrl.update when not in a landing animation
-  if (_surfLandPhase !== 'disembarking') {
+  // Only call camCtrl.update when not in a landing animation or tether phase
+  if (_surfLandPhase !== 'disembarking' && _surfLandPhase !== 'tethering') {
     camCtrl.update(character, dt, _planetCtx)
   }
 
@@ -575,11 +644,17 @@ function loop(): void {
     hud.setDockPrompt(false)
   }
 
-  // Land prompt: show when flying sub-ship near planet surface
+  // Land prompt — hysteresis: show at <PLANET_RADIUS+18, hide only at >PLANET_RADIUS+40
+  // This prevents flickering when the sub-ship bounces at the collision boundary.
+  if (eventManager.getActiveEventId() === 'planet' && launchPhase === 'flying') {
+    const _distToPlanet = scene.subship.group.position.distanceTo(planetEvent.getPlanetCenter())
+    if (!landPromptActive && _distToPlanet < PLANET_RADIUS + 18) landPromptActive = true
+    if (landPromptActive  && _distToPlanet > PLANET_RADIUS + 40) landPromptActive = false
+  } else {
+    landPromptActive = false
+  }
   const _nearPlanet = launchPhase === 'flying' && mode === 'subship_piloting'
-    && planetLandPhase === 'none'
-    && eventManager.getActiveEventId() === 'planet'
-    && planetEvent.isNearSurface(scene.subship.group.position)
+    && planetLandPhase === 'none' && landPromptActive
   hud.setLandPrompt(_nearPlanet)
 
   // Impact audio + camera shake when hull decreases

@@ -79,6 +79,31 @@ export class PlanetEvent implements IEvent {
     this.mesh.collectNode(node)
   }
 
+  /**
+   * Scatter ore nodes around a landing spot so the player always has nearby
+   * resources to mine. Call once when the disembark sequence finishes.
+   */
+  scatterNodesNear(landWorldPos: Vector3, count = 4): void {
+    const up = landWorldPos.clone().sub(this._center).normalize()
+
+    // Two tangent axes spanning the surface at the landing spot
+    const arb = Math.abs(up.y) < 0.9 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0)
+    const t1   = new Vector3().crossVectors(up, arb).normalize()
+    const t2   = new Vector3().crossVectors(up, t1)
+
+    for (let i = 0; i < count; i++) {
+      const angle  = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.8
+      const radius = 8 + Math.random() * 18   // 8 – 26 m from landing spot
+      const pos    = landWorldPos.clone()
+        .addScaledVector(t1, Math.cos(angle) * radius)
+        .addScaledVector(t2, Math.sin(angle) * radius)
+      // Snap onto sphere surface
+      const dir = pos.clone().sub(this._center).normalize()
+      pos.copy(this._center).addScaledVector(dir, PLANET_RADIUS + 1.2)
+      this.mesh.addNodeAt(pos)
+    }
+  }
+
   /** Called by main.ts after player lifts off */
   markComplete(): void {
     this._complete = true
