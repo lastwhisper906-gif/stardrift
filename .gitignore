@@ -5,3 +5,9 @@ dist/
 *.local
 chromium_cli/
 /tmp/
+
+# diagnostic scripts & screenshots
+_*.mjs
+_*.png
+playwright-report/
+test-results/
