@@ -9,19 +9,12 @@ import {
 } from 'three'
 import type { IEvent } from './IEvent.js'
 import type { IStateRoom } from '../state/IStateRoom.js'
+import { ALIEN } from '../tuning.js'
 
 function alienMat(color: number, emissive = 0, ei = 0): MeshStandardMaterial {
   return new MeshStandardMaterial({ color, metalness: 0.3, roughness: 0.5, emissive, emissiveIntensity: ei })
 }
 
-const SPAWN_DIST   = 200
-const APPROACH_SPEED = 14   // m/s
-const SHOOT_RANGE  = 90     // m, alien starts shooting
-const SHOOT_DMGM   = 10     // damage per shot
-const SHOOT_INTERVAL = 5    // seconds between shots
-const RAM_DIST     = 14     // m, ram damage threshold
-const RAM_DMG      = 25
-const MAX_DURATION = 55     // seconds before alien retreats
 
 export class AlienEvent implements IEvent {
   readonly id = 'alien'
@@ -98,16 +91,16 @@ export class AlienEvent implements IEvent {
       -Math.cos(ry) * Math.cos(rx),
     )
     this.alienPos.set(
-      state.ship.position[0] + fwd.x * SPAWN_DIST,
+      state.ship.position[0] + fwd.x * ALIEN.spawnDist,
       state.ship.position[1],
-      state.ship.position[2] + fwd.z * SPAWN_DIST,
+      state.ship.position[2] + fwd.z * ALIEN.spawnDist,
     )
     this.mesh.position.copy(this.alienPos)
     this.scene.add(this.mesh)
     this.scene.add(this.explosionLight)
     this.alienHealth  = 4
     this.timer        = 0
-    this.shootTimer   = SHOOT_INTERVAL * 0.5
+    this.shootTimer   = ALIEN.shootInterval * 0.5
     this.ramCooldown  = 0
     this.phase        = 'approach'
   }
@@ -124,12 +117,12 @@ export class AlienEvent implements IEvent {
 
     if (this.phase === 'approach') {
       // Orbit when close enough, ram otherwise
-      if (dist > RAM_DIST + 5) {
-        this.alienPos.addScaledVector(toShip, APPROACH_SPEED * dt)
+      if (dist > ALIEN.ramDist + 5) {
+        this.alienPos.addScaledVector(toShip, ALIEN.approachSpeed * dt)
       }
     } else {
       // Retreat
-      this.alienPos.addScaledVector(toShip, -APPROACH_SPEED * 1.5 * dt)
+      this.alienPos.addScaledVector(toShip, -ALIEN.approachSpeed * 1.5 * dt)
     }
 
     this.mesh.position.copy(this.alienPos)
@@ -138,16 +131,16 @@ export class AlienEvent implements IEvent {
     this.mesh.rotation.y += dt * 0.4
 
     // Shoot at ship when in range
-    if (dist < SHOOT_RANGE && this.shootTimer <= 0) {
-      this.shootTimer = SHOOT_INTERVAL
-      const newHull = Math.max(0, state.ship.hull - SHOOT_DMGM)
+    if (dist < ALIEN.shootRange && this.shootTimer <= 0) {
+      this.shootTimer = ALIEN.shootInterval
+      const newHull = Math.max(0, state.ship.hull - ALIEN.shootDamage)
       this.room.setState({ ship: { ...state.ship, hull: newHull } })
     }
 
     // Ram damage
-    if (dist < RAM_DIST && this.ramCooldown <= 0) {
+    if (dist < ALIEN.ramDist && this.ramCooldown <= 0) {
       this.ramCooldown = 3
-      const newHull = Math.max(0, state.ship.hull - RAM_DMG)
+      const newHull = Math.max(0, state.ship.hull - ALIEN.ramDamage)
       this.room.setState({ ship: { ...state.ship, hull: newHull } })
     }
 
@@ -161,7 +154,7 @@ export class AlienEvent implements IEvent {
     }
 
     // Retreat if timer exceeded
-    if (this.timer > MAX_DURATION) this.phase = 'retreat'
+    if (this.timer > ALIEN.maxDuration) this.phase = 'retreat'
   }
 
   /** Called when player fires weapons (Space in piloting mode) */
@@ -198,7 +191,7 @@ export class AlienEvent implements IEvent {
   isComplete(): boolean {
     if (this.phase === 'exploding') return this.explodeTimer <= 0
     if (this.alienHealth <= 0)  return true
-    if (this.phase === 'retreat' && this.getDistanceToShip() > SPAWN_DIST) return true
+    if (this.phase === 'retreat' && this.getDistanceToShip() > ALIEN.spawnDist) return true
     return false
   }
 }

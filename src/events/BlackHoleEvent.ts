@@ -10,12 +10,7 @@ import {
 } from 'three'
 import type { IEvent } from './IEvent.js'
 import type { IStateRoom } from '../state/IStateRoom.js'
-
-const SPAWN_DIST    = 250
-const ESCAPE_DIST   = 380
-const DESTROY_DIST  = 12
-const GRAVITY_COEFF = 350    // m³/s²
-const MAX_DURATION  = 60
+import { BLACKHOLE } from '../tuning.js'
 
 export class BlackHoleEvent implements IEvent {
   readonly id = 'blackhole'
@@ -84,9 +79,9 @@ export class BlackHoleEvent implements IEvent {
       -Math.sin(ry) * Math.cos(rx), Math.sin(rx), -Math.cos(ry) * Math.cos(rx),
     )
     this.holePos.set(
-      state.ship.position[0] + fwd.x * SPAWN_DIST * 0.6 + right.x * SPAWN_DIST * 0.8,
+      state.ship.position[0] + fwd.x * BLACKHOLE.spawnDist * 0.6 + right.x * BLACKHOLE.spawnDist * 0.8,
       state.ship.position[1],
-      state.ship.position[2] + fwd.z * SPAWN_DIST * 0.6 + right.z * SPAWN_DIST * 0.8,
+      state.ship.position[2] + fwd.z * BLACKHOLE.spawnDist * 0.6 + right.z * BLACKHOLE.spawnDist * 0.8,
     )
     this.mesh.position.copy(this.holePos)
     this.scene.add(this.mesh)
@@ -103,12 +98,12 @@ export class BlackHoleEvent implements IEvent {
     const dist    = toHole.length()
 
     // Gravitational pull (inverse square, capped at close range)
-    const grav = Math.min(GRAVITY_COEFF / Math.max(dist * dist, 100), 8)
+    const grav = Math.min(BLACKHOLE.gravityCoeff / Math.max(dist * dist, 100), 8)
     const pull = toHole.normalize().multiplyScalar(grav * dt)
     const [vx, vy, vz] = state.ship.velocity
 
     // Destroy ship if too close
-    if (dist < DESTROY_DIST) {
+    if (dist < BLACKHOLE.destroyDist) {
       this.room.setState({
         ship: { ...state.ship, hull: 0 },
       })
@@ -134,6 +129,6 @@ export class BlackHoleEvent implements IEvent {
   }
 
   isComplete(): boolean {
-    return this.getDistanceToShip() > ESCAPE_DIST || this.timer > MAX_DURATION
+    return this.getDistanceToShip() > BLACKHOLE.escapeDist || this.timer > BLACKHOLE.maxDuration
   }
 }

@@ -1,10 +1,5 @@
 import type { ShipState } from '../state/GameState.js'
-
-const DRAG_PER_SEC         = 0.08   // 92% velocity decay per second (was per-frame 0.92)
-const ANGULAR_DRAG_PER_SEC = 0.15   // angular decay per second
-const FORWARD_ACCEL        = 12     // was 4 — tripled for noticeable movement
-const O2_IDLE_DRAIN  = 0.04   // %/s always
-const O2_FLIGHT_DRAIN = 0.18  // %/s extra when engines running
+import { PHYSICS } from '../tuning.js'
 
 export function updatePhysics(ship: ShipState, dt: number): ShipState {
   const [rx, ry, rz] = ship.rotation
@@ -16,8 +11,8 @@ export function updatePhysics(ship: ShipState, dt: number): ShipState {
   ]
 
   const [vx, vy, vz] = ship.velocity
-  const accel = ship.throttle * FORWARD_ACCEL
-  const drag = Math.pow(DRAG_PER_SEC, dt)
+  const accel = ship.throttle * PHYSICS.forwardAccel
+  const drag = Math.pow(PHYSICS.dragPerSec, dt)
   const nextVel: [number, number, number] = [
     (vx + fwd[0] * accel * dt) * drag,
     (vy + fwd[1] * accel * dt) * drag,
@@ -32,14 +27,14 @@ export function updatePhysics(ship: ShipState, dt: number): ShipState {
   ]
 
   const [avx, avy, avz] = ship.angularVelocity
-  const angDrag = Math.pow(ANGULAR_DRAG_PER_SEC, dt)
+  const angDrag = Math.pow(PHYSICS.angularDragPerSec, dt)
   const nextAV: [number, number, number] = [
     avx * angDrag,
     avy * angDrag,
     avz * angDrag,
   ]
 
-  const o2Drain = (O2_IDLE_DRAIN + (ship.throttle > 0.05 ? O2_FLIGHT_DRAIN : 0)) * dt
+  const o2Drain = (PHYSICS.o2IdleDrain + (ship.throttle > 0.05 ? PHYSICS.o2FlightDrain : 0)) * dt
   const nextO2 = Math.max(0, ship.oxygen - o2Drain)
 
   return {

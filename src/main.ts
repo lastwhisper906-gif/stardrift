@@ -22,6 +22,7 @@ import { IceAxeView } from './render/IceAxeView.js'
 import { SubshipArmsView } from './render/SubshipArmsView.js'
 import { TetherView } from './render/TetherView.js'
 import { createInitialSurfaceState } from './state/GameState.js'
+import { LAUNCH, LANDING } from './tuning.js'
 import { HUD } from './hud/HUD.js'
 import { CharacterController } from './character/CharacterController.js'
 import { CameraController } from './camera/CameraController.js'
@@ -130,8 +131,6 @@ let gameOver = false
 type LaunchPhase = 'docked' | 'hatch_open' | 'descending' | 'flying' | 'ascending'
 let launchPhase: LaunchPhase = 'docked'
 let subshipLocalY = 0.0
-const DESCENT_TARGET  = -8.0
-const LAUNCH_ANIM_SPD = 4.5   // m/s
 
 let subshipState: SubshipState | null = null
 let landPromptActive = false   // hysteresis flag — prevents prompt flickering
@@ -144,7 +143,6 @@ const _landQuat    = new Quaternion()        // scratch for landing orientation
 const _landedEuler = new Euler(0, 0, 0, 'YXZ')  // scratch for syncing landed rotation to subshipState
 
 // ── Planet surface exploration ────────────────────────────────────────────────
-const REBOARD_DIST = 8   // metres — player must be this close to the parked subship to re-board
 let planetLandPhase: 'none' | 'on_surface' = 'none'
 const charWorldPos   = new Vector3()
 const _charLocalTmp  = new Vector3()
@@ -297,7 +295,7 @@ function loop(): void {
       )
       if (scene.subship.group.position.distanceTo(_hangarWP) < 18) {
         scene.attachSubshipForAscent()
-        subshipLocalY = DESCENT_TARGET
+        subshipLocalY = LAUNCH.descentTarget
         launchPhase   = 'ascending'
         subshipState  = null
         audio.setThrottle(0)
@@ -306,7 +304,7 @@ function loop(): void {
     } else if (mode === 'planet_surface' && room.getState().surface.landingPhase === 'on_surface') {
       // ── Re-board the parked subship (must be nearby) ─────────────────────
       const _distToSub = charWorldPos.distanceTo(scene.subship.group.position)
-      if (_distToSub <= REBOARD_DIST) {
+      if (_distToSub <= LANDING.reboardDist) {
         keyboard.releasePointerLock()
         camCtrl.beginReboardLerp(scene.subship.group)
         hud.setAnchorPrompt(false, false)
@@ -331,9 +329,9 @@ function loop(): void {
       launchPhase = 'descending'
     }
   } else if (launchPhase === 'descending') {
-    subshipLocalY -= LAUNCH_ANIM_SPD * dt
+    subshipLocalY -= LAUNCH.animSpeed * dt
     scene.subship.group.position.y = subshipLocalY
-    if (subshipLocalY <= DESCENT_TARGET) {
+    if (subshipLocalY <= LAUNCH.descentTarget) {
       const worldPos = new Vector3()
       scene.subship.group.getWorldPosition(worldPos)
       subshipState = createSubshipState([worldPos.x, worldPos.y, worldPos.z])
@@ -341,7 +339,7 @@ function loop(): void {
       launchPhase = 'flying'
     }
   } else if (launchPhase === 'ascending') {
-    subshipLocalY += LAUNCH_ANIM_SPD * dt
+    subshipLocalY += LAUNCH.animSpeed * dt
     scene.subship.group.position.y = subshipLocalY
     if (subshipLocalY >= 0) {
       scene.subship.group.position.set(0, 0, 40)
@@ -534,11 +532,8 @@ function loop(): void {
   // ── Planet landing animation ─────────────────────────────────────────────
   {
     const surf = room.getState().surface
-    const TOUCHDOWN_DUR = 1.8   // seconds for subship to descend to surface
-    const DISEMBARK_DUR = 1.4   // seconds for camera to lerp to surface eye
-
     if (surf.landingPhase === 'touching_down') {
-      const progress = Math.min(1, surf.landingProgress + dt / TOUCHDOWN_DUR)
+      const progress = Math.min(1, surf.landingProgress + dt / LANDING.touchdownDur)
       room.setState({ surface: { ...surf, landingProgress: progress } })
 
       // Descend subship from stop radius toward surface
@@ -583,7 +578,7 @@ function loop(): void {
         room.setState({ surface: { ...room.getState().surface, landingPhase: 'disembarking', landingProgress: 0 } })
       }
     } else if (surf.landingPhase === 'disembarking') {
-      const progress = Math.min(1, surf.landingProgress + dt / DISEMBARK_DUR)
+      const progress = Math.min(1, surf.landingProgress + dt / LANDING.disembarkDur)
       room.setState({ surface: { ...surf, landingProgress: progress } })
 
       const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
@@ -615,8 +610,7 @@ function loop(): void {
       }
     } else if (surf.landingPhase === 'reboarding') {
       // ── Camera lerps from surface eye back to subship cockpit eye ────────
-      const REBOARD_DUR = 1.4
-      const progress = Math.min(1, surf.landingProgress + dt / REBOARD_DUR)
+      const progress = Math.min(1, surf.landingProgress + dt / LANDING.reboardDur)
       room.setState({ surface: { ...surf, landingProgress: progress } })
 
       const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
@@ -757,7 +751,7 @@ function loop(): void {
   hud.setSurfaceControlHint(_surfActive)
   if (_surfActive) {
     const _dts = charWorldPos.distanceTo(scene.subship.group.position)
-    hud.setReboardPrompt(_dts <= REBOARD_DIST)
+    hud.setReboardPrompt(_dts <= LANDING.reboardDist)
   } else {
     hud.setReboardPrompt(false)
   }

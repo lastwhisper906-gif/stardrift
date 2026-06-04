@@ -7,15 +7,9 @@ import {
 } from 'three'
 import type { IEvent } from './IEvent.js'
 import type { IStateRoom } from '../state/IStateRoom.js'
+import { ASTEROID } from '../tuning.js'
 
 const RADIUS = 4
-const SPAWN_DIST = 120
-const SPEED = 18         // m/s
-const HIT_DIST = 6.5
-const HIT_DAMAGE = 12
-const HIT_COOLDOWN = 2.5 // s — prevents multi-hit per pass
-const ESCAPE_DIST = 150  // asteroid flew past, event ends
-const MAX_DURATION = 38  // s — safety timeout
 
 export class AsteroidEvent implements IEvent {
   readonly id = 'asteroid'
@@ -61,14 +55,14 @@ export class AsteroidEvent implements IEvent {
 
     // Spawn ahead of ship with random lateral scatter
     this.pos.set(
-      px + fwd.x * SPAWN_DIST + (Math.random() - 0.5) * 35,
-      py + fwd.y * SPAWN_DIST + (Math.random() - 0.5) * 18,
-      pz + fwd.z * SPAWN_DIST + (Math.random() - 0.5) * 35,
+      px + fwd.x * ASTEROID.spawnDist + (Math.random() - 0.5) * 35,
+      py + fwd.y * ASTEROID.spawnDist + (Math.random() - 0.5) * 18,
+      pz + fwd.z * ASTEROID.spawnDist + (Math.random() - 0.5) * 35,
     )
 
     // Aim at ship's current position
     const toShip = new Vector3(px - this.pos.x, py - this.pos.y, pz - this.pos.z).normalize()
-    this.vel.copy(toShip).multiplyScalar(SPEED)
+    this.vel.copy(toShip).multiplyScalar(ASTEROID.speed)
 
     if (this.mesh == null) {
       const geo = new IcosahedronGeometry(RADIUS, 2)
@@ -88,12 +82,12 @@ export class AsteroidEvent implements IEvent {
       -Math.sin(ry) * Math.cos(rx), Math.sin(rx), -Math.cos(ry) * Math.cos(rx),
     )
     this.pos2.set(
-      px + fwd.x * SPAWN_DIST * 0.9 + (Math.random() - 0.5) * 50,
+      px + fwd.x * ASTEROID.spawnDist * 0.9 + (Math.random() - 0.5) * 50,
       py + (Math.random() - 0.5) * 22,
-      pz + fwd.z * SPAWN_DIST * 0.9 + (Math.random() - 0.5) * 50,
+      pz + fwd.z * ASTEROID.spawnDist * 0.9 + (Math.random() - 0.5) * 50,
     )
     const toShip = new Vector3(px - this.pos2.x, py - this.pos2.y, pz - this.pos2.z).normalize()
-    this.vel2.copy(toShip).multiplyScalar(SPEED * 0.8)
+    this.vel2.copy(toShip).multiplyScalar(ASTEROID.speed * 0.8)
     const geo  = new IcosahedronGeometry(RADIUS * 0.65, 1)
     const mat2 = new MeshStandardMaterial({ color: 0x665544, roughness: 0.9, metalness: 0.08 })
     this.mesh2 = new Mesh(geo, mat2)
@@ -120,15 +114,15 @@ export class AsteroidEvent implements IEvent {
     this.distToShip = this.pos.distanceTo(shipPos)
 
     // Collision
-    if (this.distToShip < HIT_DIST && this.hitCooldown <= 0) {
+    if (this.distToShip < ASTEROID.hitDist && this.hitCooldown <= 0) {
       const state = this.room.getState()
       this.room.setState({
-        ship: { ...state.ship, hull: Math.max(0, state.ship.hull - HIT_DAMAGE) },
+        ship: { ...state.ship, hull: Math.max(0, state.ship.hull - ASTEROID.hitDamage) },
       })
-      this.hitCooldown = HIT_COOLDOWN
+      this.hitCooldown = ASTEROID.hitCooldown
       // Deflect asteroid away from ship
       const away = this.pos.clone().sub(shipPos).normalize()
-      this.vel.copy(away).multiplyScalar(SPEED * 0.7)
+      this.vel.copy(away).multiplyScalar(ASTEROID.speed * 0.7)
     }
 
     // Second asteroid update
@@ -139,21 +133,21 @@ export class AsteroidEvent implements IEvent {
       this.pos2.addScaledVector(this.vel2, dt)
       this.mesh2.position.copy(this.pos2)
       const dist2 = this.pos2.distanceTo(shipPos)
-      if (dist2 < HIT_DIST * 0.75 && this.hit2Cooldown <= 0) {
+      if (dist2 < ASTEROID.hitDist * 0.75 && this.hit2Cooldown <= 0) {
         const state2 = this.room.getState()
-        this.room.setState({ ship: { ...state2.ship, hull: Math.max(0, state2.ship.hull - HIT_DAMAGE * 0.7) } })
-        this.hit2Cooldown = HIT_COOLDOWN
+        this.room.setState({ ship: { ...state2.ship, hull: Math.max(0, state2.ship.hull - ASTEROID.hitDamage * 0.7) } })
+        this.hit2Cooldown = ASTEROID.hitCooldown
         const away2 = this.pos2.clone().sub(shipPos).normalize()
-        this.vel2.copy(away2).multiplyScalar(SPEED * 0.6)
+        this.vel2.copy(away2).multiplyScalar(ASTEROID.speed * 0.6)
       }
-      if (dist2 > ESCAPE_DIST) {
+      if (dist2 > ASTEROID.escapeDist) {
         this.scene.remove(this.mesh2)
         this.mesh2.geometry.dispose()
         this.mesh2 = null
       }
     }
 
-    if (this.distToShip > ESCAPE_DIST || this.elapsed > MAX_DURATION) {
+    if (this.distToShip > ASTEROID.escapeDist || this.elapsed > ASTEROID.maxDuration) {
       this.done = true
     }
   }

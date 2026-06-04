@@ -3,13 +3,15 @@ import type { SurfaceState } from '../state/GameState.js'
 import type { ClimberInput } from '../input/InputTypes.js'
 import type { ResourceNode } from '../render/PlanetMesh.js'
 import { PLANET_RADIUS, SURFACE_FOOT } from '../render/PlanetMesh.js'
+import { CLIMBING } from '../tuning.js'
 
-export const SWING_REACH    = 3.8     // metres advanced per axe plant
-export const PULL_DURATION  = 0.38    // seconds to glide to new anchor
-export const SWING_COOLDOWN = 0.55    // arm fatigue between swings
-export const SLIDE_SPEED    = 0.6     // m/s slide-down when no anchor
-export const MINING_STRIKES = 3       // strikes to collect 1 ore
-export const MINE_NODE_DIST = 7.5     // metres — axe reach to mine node
+// Re-exported for backward-compat with tests that import these by name.
+export const SWING_REACH    = CLIMBING.swingReach
+export const PULL_DURATION  = CLIMBING.pullDuration
+export const SWING_COOLDOWN = CLIMBING.swingCooldown
+export const SLIDE_SPEED    = CLIMBING.slideSpeed
+export const MINING_STRIKES = CLIMBING.miningStrikes
+export const MINE_NODE_DIST = CLIMBING.mineNodeDist
 
 // Pre-allocated scratch
 const _up      = new Vector3()
@@ -63,7 +65,7 @@ export function updateClimbing(
 
   // ── Pull animation: glide charWorldPos toward anchor ─────────────────────
   if (s.pullProgress > 0 && s.pullFromPos && s.pullToPos) {
-    s.pullProgress = Math.min(1, s.pullProgress + dt / PULL_DURATION)
+    s.pullProgress = Math.min(1, s.pullProgress + dt / CLIMBING.pullDuration)
     const t = easeInOut(s.pullProgress)
     _pullFrom.set(...s.pullFromPos)
     _pullTo.set(...s.pullToPos)
@@ -84,7 +86,7 @@ export function updateClimbing(
     const up  = surfaceNormal(charWorldPos, planetCenter)
     _fwd.set(-Math.sin(camYaw), 0, -Math.cos(camYaw))
     const fwdT = tangentProject(_fwd, up)
-    charWorldPos.addScaledVector(fwdT, -SLIDE_SPEED * dt)  // slide back
+    charWorldPos.addScaledVector(fwdT, -CLIMBING.slideSpeed * dt)  // slide back
     snapToSurface(charWorldPos, planetCenter)
   }
 
@@ -100,13 +102,13 @@ export function updateClimbing(
   let minerals  = -1
 
   if (swingLeft || swingRight) {
-    // Compute anchor: SWING_REACH metres ahead on sphere surface
+    // Compute anchor: CLIMBING.swingReach metres ahead on sphere surface
     const up   = surfaceNormal(charWorldPos, planetCenter)
     _fwd.set(-Math.sin(camYaw), 0, -Math.cos(camYaw))
     const fwdT = tangentProject(_fwd, up)
 
     _pos.copy(charWorldPos)
-    _anchor.copy(_pos).addScaledVector(fwdT, SWING_REACH)
+    _anchor.copy(_pos).addScaledVector(fwdT, CLIMBING.swingReach)
     snapToSurface(_anchor, planetCenter)
 
     const anchorTuple: [number, number, number] = [_anchor.x, _anchor.y, _anchor.z]
@@ -124,10 +126,10 @@ export function updateClimbing(
     s.pullFromPos  = fromTuple
     s.pullToPos    = anchorTuple
     s.pullProgress = 0.01   // tiny epsilon starts the animation next frame
-    s.swingCooldown = SWING_COOLDOWN
+    s.swingCooldown = CLIMBING.swingCooldown
 
     // ── Mining check: is the anchor near an ore node? ─────────────────────
-    let nearestDist = MINE_NODE_DIST
+    let nearestDist = CLIMBING.mineNodeDist
     let nearestNode: ResourceNode | null = null
     for (const node of nodes) {
       if (node.collected) continue
@@ -148,7 +150,7 @@ export function updateClimbing(
         s.miningNodePos  = [nearestNode.worldPos.x, nearestNode.worldPos.y, nearestNode.worldPos.z]
       }
 
-      if (s.miningStrikes >= MINING_STRIKES) {
+      if (s.miningStrikes >= CLIMBING.miningStrikes) {
         minedNode       = nearestNode
         minerals        = 1   // +1 ore
         s.miningStrikes = 0

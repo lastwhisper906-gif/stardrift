@@ -9,10 +9,7 @@ import {
 } from 'three'
 import type { IEvent } from './IEvent.js'
 import type { IStateRoom } from '../state/IStateRoom.js'
-
-const DEPLOY_DURATION = 35  // seconds before probe returns
-const PATROL_RADIUS   = 60  // m
-const PATROL_SPEED    = 28  // m/s
+import { PROBE } from '../tuning.js'
 
 export class SubshipEvent implements IEvent {
   readonly id = 'subship'
@@ -86,23 +83,23 @@ export class SubshipEvent implements IEvent {
 
     if (this.phase === 'deploy') {
       // Fly out to patrol radius
-      const targetPos = shipPos.clone().add(new Vector3(PATROL_RADIUS, 8, 0))
+      const targetPos = shipPos.clone().add(new Vector3(PROBE.patrolRadius, 8, 0))
       const dir = targetPos.clone().sub(this.probePos).normalize()
-      this.probePos.addScaledVector(dir, PATROL_SPEED * dt)
+      this.probePos.addScaledVector(dir, PROBE.patrolSpeed * dt)
       if (this.probePos.distanceTo(targetPos) < 5) this.phase = 'patrol'
     } else if (this.phase === 'patrol') {
       // Circle around the ship
       this.patrolAngle += dt * 0.6
       this.probePos.set(
-        shipPos.x + Math.cos(this.patrolAngle) * PATROL_RADIUS,
+        shipPos.x + Math.cos(this.patrolAngle) * PROBE.patrolRadius,
         shipPos.y + 8,
-        shipPos.z + Math.sin(this.patrolAngle) * PATROL_RADIUS,
+        shipPos.z + Math.sin(this.patrolAngle) * PROBE.patrolRadius,
       )
-      if (this.timer > DEPLOY_DURATION) this.phase = 'return'
+      if (this.timer > PROBE.deployDuration) this.phase = 'return'
     } else {
       // Return to ship
       const dir = shipPos.clone().sub(this.probePos).normalize()
-      this.probePos.addScaledVector(dir, PATROL_SPEED * 1.5 * dt)
+      this.probePos.addScaledVector(dir, PROBE.patrolSpeed * 1.5 * dt)
     }
 
     this.mesh.position.copy(this.probePos)
