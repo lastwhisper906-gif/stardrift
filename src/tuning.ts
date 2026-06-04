@@ -52,17 +52,25 @@ export const SUBSHIP = {
 
 // ── Planet surface climbing ─────────────────────────────────────────────────
 export const CLIMBING = {
-  swingReach:    3.8,   // m advanced per axe plant
-  pullDuration:  0.38,  // s to glide to anchor
-  swingCooldown: 0.55,  // s arm fatigue between swings
-  slideSpeed:    0.6,   // m/s slide-down when no anchor
+  swingReach:    3.8,   // (legacy) retained for re-exported test constants
+  pullDuration:  0.38,  // (legacy)
+  swingCooldown: 0.55,  // (legacy)
+  slideSpeed:    0.6,   // (legacy)
   miningStrikes: 3,     // consecutive strikes to collect 1 ore
-  mineNodeDist:  7.5,   // m axe reach to mine node
+  mineNodeDist:  7.5,   // m axe-anchor reach to mine node
   // Strike animation phases (seconds)
   strikeWindUp:  0.10,  // axe pulls back quickly
   strikeImpact:  0.08,  // axe drives sharply forward/down into surface
   strikeHold:    0.12,  // brief hold at impact (weight feeling)
   strikeReturn:  0.20,  // slow pull back to rest
+
+  // ── Zero-g axe locomotion (P3) ──
+  zeroGDamping:    0.8,   // velocity fraction retained per second when coasting (Newtonian drift)
+  springK:         7,     // m/s² per metre of axe stretch (hold-to-reel stiffness)
+  springDamping:   2.2,   // s⁻¹ velocity damping while reeling (prevents oscillation)
+  axeMaxReach:     50,    // m — max grapple distance; aiming beyond this finds no anchor
+  maxSpeed:        22,    // m/s — clamp to prevent runaway drift
+  surfaceFriction: 1.0,   // tangential velocity retained on surface graze (1.0 = no ground friction, per P3)
 }
 
 // ── Asteroid event ──────────────────────────────────────────────────────────

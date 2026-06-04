@@ -1,125 +1,122 @@
 import { describe, it, expect } from 'vitest'
 import { Vector3 } from 'three'
-import { updateClimbing, SWING_REACH, SWING_COOLDOWN, MINING_STRIKES } from './ClimbingSystem.js'
+import { updateClimbing, MINING_STRIKES } from './ClimbingSystem.js'
 import { createInitialSurfaceState } from '../state/GameState.js'
 import { PLANET_RADIUS } from '../render/PlanetMesh.js'
 import type { ResourceNode } from '../render/PlanetMesh.js'
 
 const CENTER = new Vector3(0, 0, 0)
 const NO_NODES: ResourceNode[] = []
-const CAM_YAW   = 0   // looking in -Z direction
-const CAM_PITCH = 0   // level
+const R = PLANET_RADIUS
 
-function onSurface(): Vector3 {
-  return new Vector3(0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, 0)
+// Aim straight down at the surface (toward planet center) from a north-pole float.
+const AIM_DOWN_PITCH = -Math.PI / 2
+const AIM_UP_PITCH   =  Math.PI / 2
+const CAM_YAW = 0
+
+function held(side: 'left' | 'right') {
+  return {
+    leftAxe:  side === 'left',
+    rightAxe: side === 'right',
+    advance: false, rotateLeft: false, rotateRight: false,
+    mouseLeft: false, mouseRight: false,
+  }
+}
+const NO_INPUT = {
+  leftAxe: false, rightAxe: false, advance: false,
+  rotateLeft: false, rotateRight: false, mouseLeft: false, mouseRight: false,
 }
 
-function swing(axe: 'left' | 'right') {
-  return axe === 'left'
-    ? { leftAxe: true,  rightAxe: false, rotateLeft: false, rotateRight: false, advance: false, mouseLeft: false, mouseRight: false }
-    : { leftAxe: false, rightAxe: true,  rotateLeft: false, rotateRight: false, advance: false, mouseLeft: false, mouseRight: false }
+/** A point floating `h` metres above the north pole. */
+function floatingAbovePole(h: number): Vector3 {
+  return new Vector3(0, R + h, 0)
 }
-const NO_INPUT = { leftAxe: false, rightAxe: false, rotateLeft: false, rotateRight: false, advance: false, mouseLeft: false, mouseRight: false }
 
-describe('updateClimbing', () => {
-  it('swinging left axe advances character and starts pull', () => {
-    const pos = onSurface()
-    const s0  = { ...createInitialSurfaceState(), leftAnchorPos: [0, PLANET_RADIUS, 0] as [number,number,number] }
-    const { surface, charWorldPos } = updateClimbing(s0, pos, CENTER, CAM_YAW, CAM_PITCH, swing('left'), 0.016, NO_NODES)
-    expect(surface.leftAnchorPos).not.toBeNull()
-    expect(surface.pullProgress).toBeGreaterThan(0)
-    expect(surface.swingCooldown).toBeCloseTo(SWING_COOLDOWN, 2)
-    expect(surface.activeAxe).toBe('right')   // alternates
-    void charWorldPos
+describe('updateClimbing (zero-g axe locomotion)', () => {
+  it('floats with momentum and decays velocity when no axe is held', () => {
+    const s0 = { ...createInitialSurfaceState(), charVelocity: [1, 0, 0] as [number, number, number] }
+    const pos = floatingAbovePole(5)
+    const r = updateClimbing(s0, pos, CENTER, CAM_YAW, 0, NO_INPUT, 0.1, NO_NODES)
+    expect(pos.x).toBeGreaterThan(0)                     // drifted along +x
+    expect(r.surface.charVelocity[0]).toBeLessThan(1)    // damped
+    expect(r.surface.charVelocity[0]).toBeGreaterThan(0) // but still moving
   })
 
-  it('cannot swing again while on cooldown', () => {
-    const pos = onSurface()
-    const s0  = { ...createInitialSurfaceState(), swingCooldown: 0.5, activeAxe: 'right' as const }
-    const { surface } = updateClimbing(s0, pos, CENTER, CAM_YAW, CAM_PITCH, swing('right'), 0.016, NO_NODES)
-    expect(surface.rightAnchorPos).toBeNull()   // no new anchor — blocked by cooldown
+  it('holding an axe aimed at the surface throws an anchor', () => {
+    const pos = floatingAbovePole(5)
+    const r = updateClimbing(
+      createInitialSurfaceState(), pos, CENTER, CAM_YAW, AIM_DOWN_PITCH, held('left'), 0.016, NO_NODES,
+    )
+    expect(r.surface.leftAnchorPos).not.toBeNull()
+    expect(r.swung).toBe('left')
   })
 
-  it('cannot swing while pull animation in progress', () => {
-    const pos = onSurface()
-    const from: [number,number,number] = [0, PLANET_RADIUS, 0]
-    const to:   [number,number,number] = [0, PLANET_RADIUS, -SWING_REACH]
-    const s0 = { ...createInitialSurfaceState(), pullProgress: 0.5, pullFromPos: from, pullToPos: to, activeAxe: 'right' as const }
-    const { surface } = updateClimbing(s0, pos, CENTER, CAM_YAW, CAM_PITCH, swing('right'), 0.016, NO_NODES)
-    expect(surface.rightAnchorPos).toBeNull()
+  it('aiming away from the planet finds no anchor', () => {
+    const pos = floatingAbovePole(5)
+    const r = updateClimbing(
+      createInitialSurfaceState(), pos, CENTER, CAM_YAW, AIM_UP_PITCH, held('left'), 0.016, NO_NODES,
+    )
+    expect(r.surface.leftAnchorPos).toBeNull()
+    expect(r.swung).toBe('none')
   })
 
-  it('pull animation advances charWorldPos toward anchor', () => {
-    const pos  = new Vector3(0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, 0)
-    const from: [number,number,number] = [0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, 0]
-    const to:   [number,number,number] = [0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, -SWING_REACH]
+  it('reels the body toward a held anchor', () => {
+    const pos = floatingAbovePole(8)
+    let s = createInitialSurfaceState()
+    // Press: cast anchor on the surface below
+    let r = updateClimbing(s, pos, CENTER, CAM_YAW, AIM_DOWN_PITCH, held('left'), 0.05, NO_NODES)
+    s = r.surface
+    const distBefore = pos.distanceTo(CENTER)
+    // Keep holding: reel in over several frames
+    for (let i = 0; i < 12; i++) {
+      r = updateClimbing(s, pos, CENTER, CAM_YAW, AIM_DOWN_PITCH, held('left'), 0.05, NO_NODES)
+      s = r.surface
+    }
+    expect(pos.distanceTo(CENTER)).toBeLessThan(distBefore)  // pulled down toward anchor
+  })
+
+  it('releasing drops the anchor and the body keeps drifting', () => {
     const s0 = {
       ...createInitialSurfaceState(),
-      pullProgress: 0.01,
-      pullFromPos:  from,
-      pullToPos:    to,
-      leftAnchorPos: from,
+      leftAnchorPos: [0, R, 0] as [number, number, number],
+      charVelocity:  [2, 0, 0] as [number, number, number],
     }
-    const { charWorldPos } = updateClimbing(s0, pos, CENTER, CAM_YAW, CAM_PITCH, NO_INPUT, 0.10, NO_NODES)
-    // After a 0.1s tick the character should have moved toward to-pos
-    expect(charWorldPos.z).toBeLessThan(0)
+    const pos = floatingAbovePole(5)
+    const r = updateClimbing(s0, pos, CENTER, CAM_YAW, 0, NO_INPUT, 0.05, NO_NODES)
+    expect(r.surface.leftAnchorPos).toBeNull()   // dropped on release
+    expect(pos.x).toBeGreaterThan(0)             // coasted with leftover momentum
   })
 
-  it('pull completes and resets', () => {
-    const pos  = new Vector3(0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, -SWING_REACH * 0.99)
-    const from: [number,number,number] = [0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, 0]
-    const to:   [number,number,number] = [0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, -SWING_REACH]
-    const s0 = { ...createInitialSurfaceState(), pullProgress: 0.96, pullFromPos: from, pullToPos: to, leftAnchorPos: from }
-    const { surface } = updateClimbing(s0, pos, CENTER, CAM_YAW, CAM_PITCH, NO_INPUT, 0.10, NO_NODES)
-    expect(surface.pullProgress).toBe(0)
-    expect(surface.pullFromPos).toBeNull()
-    expect(surface.pullToPos).toBeNull()
+  it('soft collision pushes the body out and strips inward velocity', () => {
+    const pos = new Vector3(0, R - 2, 0)   // start just below the surface
+    const s0 = { ...createInitialSurfaceState(), charVelocity: [0, -5, 0] as [number, number, number] }
+    const r = updateClimbing(s0, pos, CENTER, CAM_YAW, 0, NO_INPUT, 0.05, NO_NODES)
+    expect(pos.distanceTo(CENTER)).toBeGreaterThanOrEqual(R - 1e-3)  // pushed back to surface
+    expect(r.surface.charVelocity[1]).toBeGreaterThan(-5)            // inward component removed
   })
 
-  it('mining: 3 strikes on same node collects ore', () => {
-    const nodePos = new Vector3(0, PLANET_RADIUS + 0.05 /* SURFACE_FOOT */, -(SWING_REACH * 0.5))
-    const node: ResourceNode = { worldPos: nodePos, collected: false, mesh: null as unknown as import('three').Mesh }
-
-    const pos = onSurface()
+  it('mining: 3 anchor-strikes on the same node collects ore', () => {
+    const node: ResourceNode = {
+      worldPos: new Vector3(0, R, 0),
+      collected: false,
+      mesh: null as unknown as import('three').Mesh,
+    }
     let s = createInitialSurfaceState()
+    const cast = () => updateClimbing(s, floatingAbovePole(5), CENTER, CAM_YAW, AIM_DOWN_PITCH, held('left'), 0.016, [node])
+    const release = () => updateClimbing(s, floatingAbovePole(5), CENTER, CAM_YAW, AIM_DOWN_PITCH, NO_INPUT, 0.016, [node])
 
-    // Strike once
-    const r1 = updateClimbing(s, pos.clone(), CENTER, CAM_YAW, CAM_PITCH, swing('left'), 0.016, [node])
-    s = r1.surface
-    expect(r1.minedNode).toBeNull()
+    let r = cast(); s = r.surface
     expect(s.miningStrikes).toBe(1)
+    expect(r.minedNode).toBeNull()
 
-    // Strike twice (clear pull state between strikes so canSwing allows it)
-    s.swingCooldown = 0; s.activeAxe = 'right'
-    s.pullProgress = 0; s.pullFromPos = null; s.pullToPos = null
-    const r2 = updateClimbing(s, pos.clone(), CENTER, CAM_YAW, CAM_PITCH, swing('right'), 0.016, [node])
-    s = r2.surface
+    r = release(); s = r.surface     // must release before re-casting
+    r = cast(); s = r.surface
     expect(s.miningStrikes).toBe(2)
-    expect(r2.minedNode).toBeNull()
 
-    // Strike three times → should collect
-    s.swingCooldown = 0; s.activeAxe = 'left'
-    s.pullProgress = 0; s.pullFromPos = null; s.pullToPos = null
-    const r3 = updateClimbing(s, pos.clone(), CENTER, CAM_YAW, CAM_PITCH, swing('left'), 0.016, [node])
-    expect(r3.minedNode).toBe(node)
-    expect(r3.surface.miningStrikes).toBe(0)
-  })
-
-  it('cooldown decays over time', () => {
-    const pos = onSurface()
-    const s0  = { ...createInitialSurfaceState(), swingCooldown: 0.55 }
-    const { surface } = updateClimbing(s0, pos, CENTER, CAM_YAW, CAM_PITCH, NO_INPUT, 0.1, NO_NODES)
-    expect(surface.swingCooldown).toBeCloseTo(0.45, 2)
-  })
-
-  it('slides when no anchor planted', () => {
-    const pos = onSurface()
-    const s0  = createInitialSurfaceState()   // no anchors
-    const posBefore = pos.clone()
-    updateClimbing(s0, pos, CENTER, CAM_YAW, CAM_PITCH, NO_INPUT, 0.5, NO_NODES)
-    // Character should have moved (slid) from start
-    const moved = pos.distanceTo(posBefore)
-    expect(moved).toBeGreaterThan(0)
+    r = release(); s = r.surface
+    r = cast(); s = r.surface
+    expect(r.minedNode).toBe(node)
+    expect(r.surface.miningStrikes).toBe(0)
   })
 
   it('MINING_STRIKES constant is 3', () => {

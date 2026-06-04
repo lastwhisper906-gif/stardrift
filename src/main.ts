@@ -74,6 +74,17 @@ camCtrl.setSubshipGroup(scene.subship.group)
   },
   // Surface test helpers — used by Playwright to verify Phase A reboard logic
   getSurfaceDistToSubship: () => +charWorldPos.distanceTo(scene.subship.group.position).toFixed(1),
+  getSurfaceZeroG: () => {
+    const s = room.getState().surface
+    return {
+      pos: { x: +charWorldPos.x.toFixed(2), y: +charWorldPos.y.toFixed(2), z: +charWorldPos.z.toFixed(2) },
+      vel: s.charVelocity.map((v) => +v.toFixed(3)),
+      speed: +Math.hypot(...s.charVelocity).toFixed(3),
+      distFromCenter: +charWorldPos.distanceTo(planetEvent.getPlanetCenter()).toFixed(2),
+      leftAnchored: s.leftAnchorPos !== null,
+      rightAnchored: s.rightAnchorPos !== null,
+    }
+  },
   snapCharToSubship: () => {
     // Move charWorldPos directly under the parked subship for reboard testing
     const center = planetEvent.getPlanetCenter()
@@ -89,7 +100,7 @@ camCtrl.setSubshipGroup(scene.subship.group)
     surface.landingPhase = 'touching_down'
     surface.landingProgress = 0
     room.setState({ surface })
-    lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false
+    lastSwinging = 'none'
     return true
   },
   getLandState: () => ({
@@ -182,11 +193,6 @@ let planetLandPhase: 'none' | 'on_surface' = 'none'
 const charWorldPos   = new Vector3()
 const _charLocalTmp  = new Vector3()
 let lastSwinging: 'left' | 'right' | 'none' = 'none'
-let prevLeftAxe   = false
-let prevRightAxe  = false
-let prevAdvance   = false
-let prevMouseLeft = false
-let prevMouseRight = false
 
 // Display-smoothed position/rotation (lerped each frame for buttery movement)
 let dispX = 0, dispY = 0, dispZ = 0
@@ -237,8 +243,7 @@ function resetGame(): void {
   landPromptActive = false
   landCooldown     = 0
   scene.subship.deployLegs(0)
-  lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false; prevAdvance = false
-  prevMouseLeft = false; prevMouseRight = false
+  lastSwinging = 'none'
 }
 
 const TARGET_MS = 1000 / 60   // ~16.67 ms — cap render at 60 fps on high-refresh displays
@@ -330,7 +335,7 @@ function loop(): void {
       surface.landingPhase = 'touching_down'
       surface.landingProgress = 0
       room.setState({ surface })
-      lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false
+      lastSwinging = 'none'
     } else if (mode === 'subship_piloting' && launchPhase === 'flying') {
       // ── Return to main ship if close enough ─────────────────────────────
       _hangarWP.set(
@@ -409,21 +414,10 @@ function loop(): void {
 
     // Only run climbing when fully landed (not during touchdown/disembark animation)
     if (st0.surface.landingPhase === 'on_surface') {
+      // Zero-g locomotion: pass HELD state directly. updateClimbing detects
+      // press (cast anchor) / release (drop anchor) from the held flags vs the
+      // current anchor state, so no edge-detection is needed here.
       const climbInput = keyboard.getClimberInput()
-
-      // Edge-detect axe swings — fire once per press/click, not every frame.
-      // 'advance' (W) is also edge-detected so each W tap = one axe swing.
-      const mouseLeftJust  = climbInput.mouseLeft  && !prevMouseLeft
-      const mouseRightJust = climbInput.mouseRight && !prevMouseRight
-      const leftJust    = (climbInput.leftAxe  && !prevLeftAxe)  || mouseLeftJust
-      const rightJust   = (climbInput.rightAxe && !prevRightAxe) || mouseRightJust
-      const advanceJust = climbInput.advance  && !prevAdvance
-      prevLeftAxe   = climbInput.leftAxe
-      prevRightAxe  = climbInput.rightAxe
-      prevAdvance   = climbInput.advance
-      prevMouseLeft  = climbInput.mouseLeft
-      prevMouseRight = climbInput.mouseRight
-      const edgeInput = { ...climbInput, leftAxe: leftJust, rightAxe: rightJust, advance: advanceJust, mouseLeft: false, mouseRight: false }
 
       const result = updateClimbing(
         st0.surface,
@@ -431,7 +425,7 @@ function loop(): void {
         planetEvent.getPlanetCenter(),
         camCtrl.getCamYaw(),
         camCtrl.getCamPitch(),
-        edgeInput,
+        climbInput,
         dt,
         planetEvent.mesh.nodes,
       )
@@ -447,11 +441,11 @@ function loop(): void {
         room.setState({ surface: result.surface })
       }
 
-      // Ice axe view animation
-      lastSwinging = leftJust ? 'left' : rightJust ? 'right' : 'none'
+      // Ice axe view animation — fires when a new anchor is thrown
+      lastSwinging = result.swung
       if (lastSwinging !== 'none') {
         iceAxeView.triggerSwing(lastSwinging)
-        camCtrl.shake(0.15)   // small impact shake at the moment of strike
+        camCtrl.shake(0.15)   // small impact shake at the moment the axe bites
       }
       iceAxeView.update(
         dt,

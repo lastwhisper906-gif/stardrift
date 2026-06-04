@@ -8,14 +8,15 @@ export interface SurfaceState {
   landingPhase:   LandingPhase
   landingProgress: number               // 0–1: progress through current landing phase
 
-  // ── Climbing ──
-  leftAnchorPos:  Vector3Tuple | null   // world-space planted left axe
-  rightAnchorPos: Vector3Tuple | null   // world-space planted right axe
-  activeAxe:      'left' | 'right'      // which axe swings next
-  swingCooldown:  number                // seconds until next swing is allowed
-  pullProgress:   number                // 0 = not pulling, 0–1 = gliding to anchor
-  pullFromPos:    Vector3Tuple | null   // world-space pull start
-  pullToPos:      Vector3Tuple | null   // world-space pull end
+  // ── Zero-g axe locomotion (P3) ──
+  charVelocity:   Vector3Tuple          // world-space body velocity (Newtonian drift)
+  leftAnchorPos:  Vector3Tuple | null   // world-space left-axe anchor (non-null = held)
+  rightAnchorPos: Vector3Tuple | null   // world-space right-axe anchor (non-null = held)
+  activeAxe:      'left' | 'right'      // retained for view animation bookkeeping
+  swingCooldown:  number                // retained (unused in zero-g model)
+  pullProgress:   number                // retained (unused in zero-g model)
+  pullFromPos:    Vector3Tuple | null   // retained (unused in zero-g model)
+  pullToPos:      Vector3Tuple | null   // retained (unused in zero-g model)
   miningStrikes:  number                // consecutive strikes on current node
   miningNodePos:  Vector3Tuple | null   // world-space of node being struck
 }
@@ -44,6 +45,7 @@ export function createInitialSurfaceState(): SurfaceState {
   return {
     landingPhase:    'none',
     landingProgress: 0,
+    charVelocity:    [0, 0, 0],
     leftAnchorPos:   null,
     rightAnchorPos:  null,
     activeAxe:       'left',
