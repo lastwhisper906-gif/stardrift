@@ -84,8 +84,11 @@ camCtrl.setSubshipGroup(scene.subship.group)
 
 // Ice axe view — 1st-person axes parented to camera (planet_surface mode)
 const iceAxeView = new IceAxeView()
-iceAxeView.group.visible = false
+iceAxeView.group.visible      = false
+iceAxeView.worldGroup.visible = false
 scene.camera.add(iceAxeView.group)
+// World-space planted-axe markers live in scene space (not shipGroup or camera)
+scene.scene.add(iceAxeView.worldGroup)
 
 // Subship pilot arms — 1st-person hands parented to camera (subship_piloting mode)
 const subshipArms = new SubshipArmsView()
@@ -193,8 +196,9 @@ function resetGame(): void {
   hud.setReboardPrompt(false)
   hud.setMinerals(0)
   hud.hideEndScreen()
-  planetLandPhase          = 'none'
-  iceAxeView.group.visible = false
+  planetLandPhase                = 'none'
+  iceAxeView.group.visible       = false
+  iceAxeView.worldGroup.visible  = false
   subshipArms.setVisible(false)
   landPromptActive = false
   landCooldown     = 0
@@ -401,7 +405,15 @@ function loop(): void {
       // Ice axe view animation
       lastSwinging = leftJust ? 'left' : rightJust ? 'right' : 'none'
       if (lastSwinging !== 'none') iceAxeView.triggerSwing(lastSwinging)
-      iceAxeView.update(lastSwinging, result.surface.pullProgress, result.surface.activeAxe, dt)
+      iceAxeView.update(
+        lastSwinging,
+        result.surface.pullProgress,
+        result.surface.activeAxe,
+        dt,
+        result.surface.leftAnchorPos,
+        result.surface.rightAnchorPos,
+        planetEvent.getPlanetCenter(),
+      )
 
       // HUD: show axe prompts
       hud.setAnchorPrompt(true, result.surface.leftAnchorPos !== null || result.surface.rightAnchorPos !== null)
@@ -573,7 +585,8 @@ function loop(): void {
         camCtrl.setWalkYaw(Math.PI + Math.atan2(toCenter.x, toCenter.z))
         camCtrl.beginDisembarkLerp()
         subshipArms.setVisible(false)   // hide cockpit arms as camera leaves cockpit
-        iceAxeView.group.visible = true
+        iceAxeView.group.visible      = true
+        iceAxeView.worldGroup.visible = true
 
         // Snapshot the landed orientation + zero velocity so that when the player
         // re-boards after mining, physics resumes from the surface-aligned pose
@@ -630,10 +643,11 @@ function loop(): void {
 
       if (progress >= 1) {
         // Camera is back at cockpit eye — hand control to subship_piloting
-        planetLandPhase          = 'none'
-        landCooldown             = 15   // suppress land prompt briefly after reboarding
-        iceAxeView.group.visible = false
-        character.mesh.visible   = true
+        planetLandPhase               = 'none'
+        landCooldown                  = 15   // suppress land prompt briefly after reboarding
+        iceAxeView.group.visible      = false
+        iceAxeView.worldGroup.visible = false
+        character.mesh.visible        = true
         subshipArms.setVisible(true)
         scene.subship.setExteriorVisible(false)
         camCtrl.setMode('subship_piloting')
