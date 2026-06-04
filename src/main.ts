@@ -271,14 +271,16 @@ function loop(): void {
 
   // ── Visibility culling — hide geometry not reachable from the current camera ─
   const inInterior = mode === 'walking' || mode === 'piloting'
-  // Include 'ascending' so the hangar stays visible as the sub-ship rises back in
   const launchInProgress = launchPhase === 'hatch_open' || launchPhase === 'descending' || launchPhase === 'ascending'
   cockpitRoom.group.visible          = inInterior
   scene.cockpit.group.visible        = inInterior
-  // Show hangar bay walls when walking, during any launch animation, OR when the
-  // sub-ship pilot is docked — so the bay door blocks the forward canopy view of space.
-  const subshipInHangar = mode === 'subship_piloting' && launchPhase === 'docked'
-  scene.corridorHangar.group.visible = mode === 'walking' || launchInProgress || subshipInHangar
+  const subshipInHangar    = mode === 'subship_piloting' && launchPhase === 'docked'
+  // P1: keep hangar visible while subship is piloted — prevents instant-disappear at launch
+  const subshipPiloting = mode === 'subship_piloting'
+  scene.corridorHangar.group.visible = mode === 'walking' || launchInProgress || subshipInHangar || subshipPiloting
+  // P1: show mothership hull in exterior view OR when flying the subship outside
+  scene.shipExterior.group.visible =
+    mode === 'exterior' || (mode === 'subship_piloting' && launchPhase === 'flying')
 
   // ── Dismiss title screen on any key ──────────────────────────────────────
   // (handled below via keyboard polling — any consumeJustPressed drains the queue)
@@ -302,6 +304,7 @@ function loop(): void {
       character.mesh.visible = false
       scene.cockpit.setArmsVisible(true)
       hud.setInteractPrompt(false)
+      keyboard.requestPointerLock()   // FPS mouse-look in cockpit
     } else if (mode === 'walking' && character.isNearSubship()) {
       camCtrl.setMode('subship_piloting')
       character.mesh.visible = false
@@ -310,6 +313,7 @@ function loop(): void {
       scene.subship.cockpitInterior.setArmsVisible(true)
       subshipArms.setVisible(true)
       if (launchPhase === 'docked') hud.setLaunchPrompt(true)
+      keyboard.requestPointerLock()   // FPS mouse-look in subship cockpit
     } else if (mode === 'subship_piloting' && launchPhase === 'docked') {
       // ── Start launch sequence ───────────────────────────────────────────
       launchPhase   = 'hatch_open'
@@ -355,6 +359,7 @@ function loop(): void {
       }
       // else: too far away — the HUD prompt already guides the player back
     } else if (mode === 'piloting' || mode === 'exterior') {
+      keyboard.releasePointerLock()   // release lock when leaving cockpit
       character.placeAtHelm()
       camCtrl.setMode('walking')
       camCtrl.setWalkYaw(Math.PI)
@@ -665,8 +670,9 @@ function loop(): void {
       if (tetherView.isComplete) {
         // Tether attached — enter full planet_surface mode
         camCtrl.setMode('planet_surface')
-        keyboard.requestPointerLock()   // auto-lock pointer for mouse-look on surface
-        subshipArms.setVisible(false)   // cockpit arms hidden; ice axes take over
+        keyboard.requestPointerLock()
+        subshipArms.setVisible(false)
+        scene.subship.setExteriorVisible(true)  // P1: show parked sub-craft from outside
         hud.setAnchorPrompt(true, false)
         const landPos: [number, number, number] = [charWorldPos.x, charWorldPos.y, charWorldPos.z]
         planetEvent.scatterNodesNear(charWorldPos)
@@ -719,21 +725,22 @@ function loop(): void {
 
   // ── Camera update ────────────────────────────────────────────────────────
   const _surfLandPhase = room.getState().surface.landingPhase
-  // Only run the full planet_surface camera when fully landed;
-  // during 'touching_down' the subship camera handles it,
-  // during 'disembarking' applyDisembarkLerp (called above) handles it.
   const _isFullySurface = mode === 'planet_surface' && _surfLandPhase === 'on_surface'
   const _climbKeys  = _isFullySurface ? keyboard.getClimberInput() : undefined
-  const _mouseDelta = _isFullySurface ? keyboard.consumeMouseDelta() : { dx: 0, dy: 0 }
+  // Always consume mouse delta to prevent accumulation; planet surface gets it via planetCtx
+  const _mouseDelta = keyboard.consumeMouseDelta()
   const _planetCtx = _isFullySurface
     ? { charWorldPos, planetCenter: planetEvent.getPlanetCenter(),
         rotateLeft: !!_climbKeys?.rotateLeft, rotateRight: !!_climbKeys?.rotateRight,
         ...(_mouseDelta.dx !== 0 ? { mouseDX: _mouseDelta.dx } : {}),
         ...(_mouseDelta.dy !== 0 ? { mouseDY: _mouseDelta.dy } : {}) }
     : undefined
-  // Only call camCtrl.update when not in a landing/reboard animation or tether phase
+  // Pass mouse delta directly to camCtrl for piloting/subship modes;
+  // skip during landing transitions (dedicated lerp functions handle those)
   if (_surfLandPhase !== 'disembarking' && _surfLandPhase !== 'tethering' && _surfLandPhase !== 'reboarding') {
-    camCtrl.update(character, dt, _planetCtx)
+    const _mx = _isFullySurface ? 0 : _mouseDelta.dx  // planet surface uses planetCtx
+    const _my = _isFullySurface ? 0 : _mouseDelta.dy
+    camCtrl.update(character, dt, _mx, _my, _planetCtx)
   }
 
   // ── HUD ──────────────────────────────────────────────────────────────────
