@@ -7,16 +7,26 @@ import {
   Quaternion,
   Vector3,
 } from 'three'
+import { CLIMBING } from '../tuning.js'
 
 // Two ice axes shown in 1st-person (parented directly to the camera)
 
 const REST_Y    = -0.18   // raised from -0.28 so hands stay inside 85° FOV
-const SWING_Y   =  0.05   // raised for swing
 const REST_Z    = -0.35   // pushed out from -0.30 for a natural arm-length extension
-const SWING_Z   = -0.48
 const REST_ROT  = -0.25   // tilt at rest
-const SWING_ROT = -0.80   // steeper tilt at swing
-const PLANT_ROT =  0.35   // tilted forward when planted (handle goes toward ice)
+
+// Windup pose — axe pulls up and back before strike
+const WINDUP_Y    =  0.06
+const WINDUP_Z    = -0.22
+const WINDUP_ROT  = -0.60
+
+// Impact pose — axe drives sharply forward and down into ice
+const IMPACT_Y    = -0.30
+const IMPACT_Z    = -0.52
+const IMPACT_ROT  =  0.90
+
+type AxePhase = 'rest' | 'windup' | 'impact' | 'hold' | 'return'
+interface AxeAnimState { phase: AxePhase; timer: number }
 
 function buildAxe(flipX: number): Group {
   const g    = new Group()
@@ -99,6 +109,8 @@ function buildPlantedAxe(flipX: number): Group {
 
 const _Y_AXIS  = new Vector3(0, 1, 0)
 
+const REST_STATE: AxeAnimState = { phase: 'rest', timer: 0 }
+
 export class IceAxeView {
   readonly group:      Group   // camera-space — add to scene.camera
   readonly worldGroup: Group   // world-space  — add to scene.scene
@@ -108,15 +120,14 @@ export class IceAxeView {
   private readonly leftPlanted:  Group
   private readonly rightPlanted: Group
 
-  // Animated state: 0=rest, 1=planted
-  private leftState  = 0
-  private rightState = 0
+  private leftAnim:  AxeAnimState = { ...REST_STATE }
+  private rightAnim: AxeAnimState = { ...REST_STATE }
 
   // Pre-allocated scratch
   private readonly _plantQ    = new Quaternion()
   private readonly _anchorV   = new Vector3()
   private readonly _outward   = new Vector3()
-  private readonly _negOutward = new Vector3()   // avoids clone() allocation per frame
+  private readonly _negOutward = new Vector3()
 
   constructor() {
     this.group = new Group()
@@ -144,47 +155,84 @@ export class IceAxeView {
     this.worldGroup.add(this.rightPlanted)
   }
 
+  /** Start a multi-phase strike animation on the given axe. */
+  triggerSwing(side: 'left' | 'right'): void {
+    if (side === 'left')  this.leftAnim  = { phase: 'windup', timer: 0 }
+    else                  this.rightAnim = { phase: 'windup', timer: 0 }
+  }
+
   /**
-   * Call each frame with the current pull-animation progress (0-1).
-   * @param swinging       'left'|'right'|'none'  which axe just started swinging
-   * @param pullProgress   0-1 from SurfaceState.pullProgress
-   * @param activeAxe      which axe swings NEXT ('left'|'right')
-   * @param leftAnchorPos  world-space left anchor, or null
-   * @param rightAnchorPos world-space right anchor, or null
-   * @param planetCenter   planet center in world space (for orientation)
+   * Advance animations and update poses each frame.
+   * Planted world-space axes appear at impact phase start, hide after return phase ends.
    */
   update(
-    swinging: 'left' | 'right' | 'none',
-    pullProgress: number,
-    activeAxe: 'left' | 'right',
     dt: number,
     leftAnchorPos:  [number, number, number] | null,
     rightAnchorPos: [number, number, number] | null,
     planetCenter: Vector3,
   ): void {
-    // Camera-space target: planted side (pulling toward) goes to 1, free side to 0
-    const leftTarget  = (swinging === 'left'  || (activeAxe === 'right' && pullProgress > 0 && pullProgress < 1)) ? 1 : 0
-    const rightTarget = (swinging === 'right' || (activeAxe === 'left'  && pullProgress > 0 && pullProgress < 1)) ? 1 : 0
+    this.leftAnim  = this._advanceAnim(this.leftAnim,  dt)
+    this.rightAnim = this._advanceAnim(this.rightAnim, dt)
 
-    this.leftState  += (leftTarget  - this.leftState)  * Math.min(1, dt * 12)
-    this.rightState += (rightTarget - this.rightState) * Math.min(1, dt * 12)
+    this._applyPose(this.leftAxe,  this.leftAnim,  -1)
+    this._applyPose(this.rightAxe, this.rightAnim,   1)
 
-    this._applyPose(this.leftAxe,  this.leftState,  -1)
-    this._applyPose(this.rightAxe, this.rightState,  1)
-
-    // World-space planted axe: shown for whichever side is currently anchored
-    // and being pulled toward (activeAxe tells us which side is the free/next hand).
-    const leftPulling  = activeAxe === 'right' && pullProgress > 0 && leftAnchorPos  !== null
-    const rightPulling = activeAxe === 'left'  && pullProgress > 0 && rightAnchorPos !== null
-    this._updatePlantedMesh(this.leftPlanted,  leftPulling  ? leftAnchorPos  : null, planetCenter)
-    this._updatePlantedMesh(this.rightPlanted, rightPulling ? rightAnchorPos : null, planetCenter)
+    // Planted axe visible during impact/hold/return phases (axe is "in the ice")
+    const leftInIce  = this.leftAnim.phase  === 'impact' || this.leftAnim.phase  === 'hold' || this.leftAnim.phase  === 'return'
+    const rightInIce = this.rightAnim.phase === 'impact' || this.rightAnim.phase === 'hold' || this.rightAnim.phase === 'return'
+    this._updatePlantedMesh(this.leftPlanted,  leftInIce  && leftAnchorPos  !== null ? leftAnchorPos  : null, planetCenter)
+    this._updatePlantedMesh(this.rightPlanted, rightInIce && rightAnchorPos !== null ? rightAnchorPos : null, planetCenter)
   }
 
-  private _applyPose(axe: Group, t: number, side: number): void {
+  private _advanceAnim(anim: AxeAnimState, dt: number): AxeAnimState {
+    if (anim.phase === 'rest') return anim
+    const timer = anim.timer + dt
+    switch (anim.phase) {
+      case 'windup':  return timer >= CLIMBING.strikeWindUp  ? { phase: 'impact',  timer: timer - CLIMBING.strikeWindUp  } : { phase: 'windup',  timer }
+      case 'impact':  return timer >= CLIMBING.strikeImpact  ? { phase: 'hold',    timer: timer - CLIMBING.strikeImpact  } : { phase: 'impact',  timer }
+      case 'hold':    return timer >= CLIMBING.strikeHold    ? { phase: 'return',  timer: timer - CLIMBING.strikeHold    } : { phase: 'hold',    timer }
+      case 'return':  return timer >= CLIMBING.strikeReturn  ? { phase: 'rest',    timer: 0                              } : { phase: 'return',  timer }
+      default:        return anim
+    }
+  }
+
+  private _applyPose(axe: Group, anim: AxeAnimState, side: number): void {
+    let posY: number, posZ: number, rotX: number
+
+    switch (anim.phase) {
+      case 'rest':
+        posY = REST_Y;   posZ = REST_Z;   rotX = REST_ROT
+        break
+      case 'windup': {
+        const t = anim.timer / CLIMBING.strikeWindUp
+        posY = REST_Y   + (WINDUP_Y   - REST_Y)   * t
+        posZ = REST_Z   + (WINDUP_Z   - REST_Z)   * t
+        rotX = REST_ROT + (WINDUP_ROT - REST_ROT) * t
+        break
+      }
+      case 'impact': {
+        const t = anim.timer / CLIMBING.strikeImpact
+        posY = WINDUP_Y   + (IMPACT_Y   - WINDUP_Y)   * t
+        posZ = WINDUP_Z   + (IMPACT_Z   - WINDUP_Z)   * t
+        rotX = WINDUP_ROT + (IMPACT_ROT - WINDUP_ROT) * t
+        break
+      }
+      case 'hold':
+        posY = IMPACT_Y;   posZ = IMPACT_Z;   rotX = IMPACT_ROT
+        break
+      case 'return': {
+        const t = anim.timer / CLIMBING.strikeReturn
+        posY = IMPACT_Y   + (REST_Y   - IMPACT_Y)   * t
+        posZ = IMPACT_Z   + (REST_Z   - IMPACT_Z)   * t
+        rotX = IMPACT_ROT + (REST_ROT - IMPACT_ROT) * t
+        break
+      }
+    }
+
     axe.position.x = side * 0.22
-    axe.position.y = REST_Y + (SWING_Y - REST_Y) * t
-    axe.position.z = REST_Z + (SWING_Z - REST_Z) * t
-    axe.rotation.x = REST_ROT + (PLANT_ROT - REST_ROT) * t
+    axe.position.y = posY
+    axe.position.z = posZ
+    axe.rotation.x = rotX
   }
 
   private _updatePlantedMesh(
@@ -198,8 +246,6 @@ export class IceAxeView {
     this._anchorV.set(anchor[0], anchor[1], anchor[2])
 
     // Place group above anchor so the pick head sits at ice level.
-    // The axe geometry has the head at local +Y (y≈0.265); by positioning the group
-    // 0.30 m outward from the anchor, the head ends up right at the surface.
     this._outward.copy(this._anchorV).sub(planetCenter).normalize()
     planted.position.copy(this._anchorV).addScaledVector(this._outward, 0.30)
 
@@ -207,11 +253,5 @@ export class IceAxeView {
     this._negOutward.copy(this._outward).negate()
     this._plantQ.setFromUnitVectors(_Y_AXIS, this._negOutward)
     planted.quaternion.copy(this._plantQ)
-  }
-
-  /** Trigger a quick swing animation on one axe */
-  triggerSwing(side: 'left' | 'right'): void {
-    if (side === 'left')  this.leftState  = 0.6
-    else                  this.rightState = 0.6
   }
 }
