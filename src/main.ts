@@ -232,12 +232,14 @@ function loop(): void {
 
   // ── Visibility culling — hide geometry not reachable from the current camera ─
   const inInterior = mode === 'walking' || mode === 'piloting'
-  const launchInProgress = launchPhase === 'hatch_open' || launchPhase === 'descending'
+  // Include 'ascending' so the hangar stays visible as the sub-ship rises back in
+  const launchInProgress = launchPhase === 'hatch_open' || launchPhase === 'descending' || launchPhase === 'ascending'
   cockpitRoom.group.visible          = inInterior
   scene.cockpit.group.visible        = inInterior
-  // Show hangar bay walls during walking AND during launch descent so the pilot
-  // sees the bay opening and the ship dropping through the hatch.
-  scene.corridorHangar.group.visible = mode === 'walking' || launchInProgress
+  // Show hangar bay walls when walking, during any launch animation, OR when the
+  // sub-ship pilot is docked — so the bay door blocks the forward canopy view of space.
+  const subshipInHangar = mode === 'subship_piloting' && launchPhase === 'docked'
+  scene.corridorHangar.group.visible = mode === 'walking' || launchInProgress || subshipInHangar
 
   // ── Dismiss title screen on any key ──────────────────────────────────────
   // (handled below via keyboard polling — any consumeJustPressed drains the queue)

@@ -57,6 +57,11 @@ export class CorridorHangar {
   private hatchOffset = 0
   private hatchTarget = 0
 
+  // Bay door: slides up to open the corridor-to-hangar passage for launch
+  private bayDoor!:        Mesh
+  private bayDoorClosedY = 0   // Y centre when closed (door covers the opening)
+  private bayDoorTravelY = 0   // how far door slides up when fully open
+
   get hatchProgress(): number { return this.hatchOffset }
 
   constructor() {
@@ -65,12 +70,14 @@ export class CorridorHangar {
     this.buildHangar()
   }
 
-  /** Animate launch hatch (open when sub-ship is launched). */
+  /** Animate launch hatch + bay door (open when sub-ship is launched). */
   update(hatchOpen: boolean, dt: number): void {
     this.hatchTarget  = hatchOpen ? 1 : 0
     this.hatchOffset += (this.hatchTarget - this.hatchOffset) * Math.min(1, dt * 2.5)
     this.hatchLeft.position.x  = -0.7 - this.hatchOffset * 2.2
     this.hatchRight.position.x =  0.7 + this.hatchOffset * 2.2
+    // Bay door slides upward to expose the launch passage
+    this.bayDoor.position.y = this.bayDoorClosedY + this.hatchOffset * this.bayDoorTravelY
   }
 
   private buildCorridor(): void {
@@ -296,6 +303,17 @@ export class CorridorHangar {
       glow.position.set(sx * (doorW / 2 - 0.012), fy + doorH / 2, fz)
       this.group.add(glow)
     }
+
+    // Bay door: a solid sliding panel that covers the corridor opening when docked.
+    // When docked the sub-ship canopy looks forward (toward smaller z), through this
+    // opening and out the main-ship nose into space. Keeping it closed blocks that view.
+    // It slides upward (y+) with hatchOffset so space is only revealed after launch.
+    const bayDoorMat = mat(0x0c1318, 0.55, 0.72)
+    this.bayDoor = new Mesh(new BoxGeometry(doorW, doorH, 0.12), bayDoorMat)
+    this.bayDoorClosedY = fy + doorH / 2
+    this.bayDoorTravelY = doorH + 0.5   // slide far enough to clear the opening
+    this.bayDoor.position.set(0, this.bayDoorClosedY, HANGAR.frontZ - 0.06)
+    this.group.add(this.bayDoor)
 
     // Pad lighting covered by hangarLight above
   }
