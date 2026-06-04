@@ -122,7 +122,8 @@ export const EVA = {
 // ── Sub-ship hangar launch animation ────────────────────────────────────────
 export const LAUNCH = {
   descentTarget: -8.0,  // m — subship Y below hangar floor before world detach
-  animSpeed:      4.5,  // m/s — descent / ascent animation speed
+  descentDur:     1.7,  // s — eased descent (launch) duration
+  ascentDur:      1.7,  // s — eased ascent (re-dock) duration
 }
 
 // ── Planet landing / surface sequence ───────────────────────────────────────

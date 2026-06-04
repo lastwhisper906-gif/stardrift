@@ -189,6 +189,13 @@ let gameOver = false
 type LaunchPhase = 'docked' | 'hatch_open' | 'descending' | 'flying' | 'ascending'
 let launchPhase: LaunchPhase = 'docked'
 let subshipLocalY = 0.0
+let launchAnimT   = 0          // 0–1 progress through the eased descent/ascent
+
+// Smootherstep ease-in-out: zero velocity at both ends → no abrupt start/stop
+function easeInOut(t: number): number {
+  const c = Math.max(0, Math.min(1, t))
+  return c * c * (3 - 2 * c)
+}
 
 let subshipState: SubshipState | null = null
 let landPromptActive = false   // hysteresis flag — prevents prompt flickering
@@ -235,6 +242,7 @@ function resetGame(): void {
   gameOver         = false
   launchPhase      = 'docked'
   subshipLocalY    = 0.0
+  launchAnimT      = 0
   subshipState     = null
   dispX = 0; dispY = 0; dispZ = 0
   dispQuat.identity()
@@ -358,6 +366,7 @@ function loop(): void {
       if (scene.subship.group.position.distanceTo(_hangarWP) < 18) {
         scene.attachSubshipForAscent()
         subshipLocalY = LAUNCH.descentTarget
+        launchAnimT   = 0
         launchPhase   = 'ascending'
         subshipState  = null
         audio.setThrottle(0)
@@ -389,12 +398,15 @@ function loop(): void {
   // ── Sub-ship launch / return animation ──────────────────────────────────
   if (launchPhase === 'hatch_open') {
     if (scene.corridorHangar.hatchProgress >= 0.86) {
+      launchAnimT = 0
       launchPhase = 'descending'
     }
   } else if (launchPhase === 'descending') {
-    subshipLocalY -= LAUNCH.animSpeed * dt
+    // Eased plunge: ease-in from rest, ease-out to a stop before world detach
+    launchAnimT = Math.min(1, launchAnimT + dt / LAUNCH.descentDur)
+    subshipLocalY = LAUNCH.descentTarget * easeInOut(launchAnimT)
     scene.subship.group.position.y = subshipLocalY
-    if (subshipLocalY <= LAUNCH.descentTarget) {
+    if (launchAnimT >= 1) {
       const worldPos = new Vector3()
       scene.subship.group.getWorldPosition(worldPos)
       subshipState = createSubshipState([worldPos.x, worldPos.y, worldPos.z])
@@ -402,9 +414,11 @@ function loop(): void {
       launchPhase = 'flying'
     }
   } else if (launchPhase === 'ascending') {
-    subshipLocalY += LAUNCH.animSpeed * dt
+    // Eased rise back into the hangar (mirror of the launch plunge)
+    launchAnimT = Math.min(1, launchAnimT + dt / LAUNCH.ascentDur)
+    subshipLocalY = LAUNCH.descentTarget * (1 - easeInOut(launchAnimT))
     scene.subship.group.position.y = subshipLocalY
-    if (subshipLocalY >= 0) {
+    if (launchAnimT >= 1) {
       scene.subship.group.position.set(0, 0, 40)
       launchPhase = 'docked'
       // If returning from planet, complete the event now that we're safely docked
