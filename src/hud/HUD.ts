@@ -397,7 +397,7 @@ export class HUD {
       padding:6px 18px;border-radius:3px;
       color:#448877;font-size:11px;letter-spacing:1px;
     `
-    surfaceControlHint.textContent = 'Q/E plant axe  ·  W advance  ·  A/D rotate  ·  F lift off'
+    surfaceControlHint.textContent = 'HOLD L/R-CLICK grapple & reel  ·  MOUSE aim  ·  A/D rotate  ·  F lift off'
     this.root.appendChild(surfaceControlHint)
 
     // ── Surface: re-board prompt (shown when near the parked subship) ────────

@@ -12,10 +12,10 @@ import {
 // Positioned in camera-local space so the pilot always sees their hands
 // on the HOTAS controls at the bottom of the screen.
 
-const SUIT_COL  = 0x3a4a5e   // lightened from 0x252d3a — visible against dark cockpit
-const GLOVE_COL = 0x243040   // lightened from 0x141c28
-const CUFF_COL  = 0x2a3448   // lightened from 0x1a2030
-const STICK_COL = 0x141c28   // lightened from 0x080c12
+const SUIT_COL  = 0x47586e   // suit sleeve — readable against the dark cockpit
+const GLOVE_COL = 0x3c4a5e   // glove — lightened further so the hand reads as a hand
+const CUFF_COL  = 0x33405a   // cuff ring
+const STICK_COL = 0x10161f   // HOTAS grip (kept dark — Lethal-Company tone)
 
 // depthTest=false ensures arms always render on top of 3-D scene geometry
 // (the HOTAS sticks in world space would otherwise occlude camera-parented arms)
@@ -27,7 +27,7 @@ function noDepth(m: MeshStandardMaterial): MeshStandardMaterial {
 function buildPilotArm(side: number): Group {
   const g        = new Group()
   const suitMat  = noDepth(new MeshStandardMaterial({ color: SUIT_COL,  metalness: 0.15, roughness: 0.75, emissive: SUIT_COL,  emissiveIntensity: 0.18 }))
-  const gloveMat = noDepth(new MeshStandardMaterial({ color: GLOVE_COL, metalness: 0.10, roughness: 0.88, emissive: GLOVE_COL, emissiveIntensity: 0.18 }))
+  const gloveMat = noDepth(new MeshStandardMaterial({ color: GLOVE_COL, metalness: 0.10, roughness: 0.85, emissive: GLOVE_COL, emissiveIntensity: 0.30 }))
   const cuffMat  = noDepth(new MeshStandardMaterial({ color: CUFF_COL,  metalness: 0.50, roughness: 0.45, emissive: CUFF_COL,  emissiveIntensity: 0.12 }))
   const stickMat = noDepth(new MeshStandardMaterial({ color: STICK_COL, metalness: 0.22, roughness: 0.90 }))
 
@@ -49,23 +49,30 @@ function buildPilotArm(side: number): Group {
   cuff.position.set(0, 0.02, 0)
   g.add(cuff)
 
-  // Gloved hand (box)
-  const hand = new Mesh(new BoxGeometry(0.058, 0.042, 0.085), gloveMat)
-  hand.position.set(0, 0.065, -0.010)
+  // Gloved palm — wraps the grip
+  const hand = new Mesh(new BoxGeometry(0.070, 0.052, 0.090), gloveMat)
+  hand.position.set(0, 0.072, -0.004)
   g.add(hand)
 
-  // Thumb
-  const thumb = new Mesh(new BoxGeometry(0.022, 0.020, 0.036), gloveMat)
-  thumb.position.set(side * 0.036, 0.062, 0.008)
-  g.add(thumb)
-
-  // Knuckle bumps
-  const knuckleMat = noDepth(new MeshStandardMaterial({ color: 0x0e1520, roughness: 0.9 }))
+  // Four fingers curling over the FRONT of the grip (toward the screen, -z),
+  // each a short cylinder laid horizontal so the knuckles read clearly.
   for (let i = 0; i < 4; i++) {
-    const k = new Mesh(new SphereGeometry(0.007, 5, 4), knuckleMat)
-    k.position.set((i - 1.5) * 0.013, 0.086, -0.008)
-    g.add(k)
+    const finger = new Mesh(new CylinderGeometry(0.0095, 0.0095, 0.052, 6), gloveMat)
+    finger.rotation.z = Math.PI / 2                       // lay finger horizontal (along x)
+    finger.position.set((i - 1.5) * 0.017, 0.090, -0.050) // across the front face of the grip
+    g.add(finger)
+    // second segment (fingertip) curling further down/in
+    const tip = new Mesh(new CylinderGeometry(0.0085, 0.0085, 0.030, 6), gloveMat)
+    tip.rotation.z = Math.PI / 2
+    tip.position.set((i - 1.5) * 0.017, 0.070, -0.066)
+    g.add(tip)
   }
+
+  // Thumb wrapping from the inner side
+  const thumb = new Mesh(new CylinderGeometry(0.011, 0.011, 0.046, 6), gloveMat)
+  thumb.rotation.x = side * 0.5
+  thumb.position.set(side * 0.040, 0.066, -0.030)
+  g.add(thumb)
 
   // HOTAS stick grip visible above hand
   const shaft = new Mesh(new CylinderGeometry(0.014, 0.018, 0.14, 8), stickMat)
@@ -95,8 +102,8 @@ function buildPilotArm(side: number): Group {
 // Rest positions in camera-local space (lower-left/right of view).
 // z=-0.28 puts arms in FRONT of the 3-D HOTAS geometry (~z=-0.25 in camera-local)
 // so depth order is correct even without relying solely on depthTest=false.
-const LEFT_POS  = new Vector3(-0.240, -0.320, -0.280)
-const RIGHT_POS = new Vector3( 0.240, -0.320, -0.280)
+const LEFT_POS  = new Vector3(-0.235, -0.285, -0.270)
+const RIGHT_POS = new Vector3( 0.235, -0.285, -0.270)
 
 export class SubshipArmsView {
   readonly group: Group

@@ -74,6 +74,18 @@ camCtrl.setSubshipGroup(scene.subship.group)
   },
   // Surface test helpers — used by Playwright to verify Phase A reboard logic
   getSurfaceDistToSubship: () => +charWorldPos.distanceTo(scene.subship.group.position).toFixed(1),
+  getArmsDebug: () => {
+    const lw = new Vector3()
+    subshipArms.group.children[1]?.getWorldPosition(lw)  // right arm
+    const camPos = new Vector3(); scene.camera.getWorldPosition(camPos)
+    return {
+      subshipArmsVisible: subshipArms.group.visible,
+      subshipArmsParentIsCamera: subshipArms.group.parent === scene.camera,
+      armWorldPos: { x: +lw.x.toFixed(2), y: +lw.y.toFixed(2), z: +lw.z.toFixed(2) },
+      camWorldPos: { x: +camPos.x.toFixed(2), y: +camPos.y.toFixed(2), z: +camPos.z.toFixed(2) },
+      camFov: scene.camera.fov,
+    }
+  },
   getSurfaceZeroG: () => {
     const s = room.getState().surface
     return {
