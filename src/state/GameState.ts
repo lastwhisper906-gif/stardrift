@@ -1,7 +1,7 @@
 import type { Vector3Tuple, EulerTuple } from '../types/math.js'
 
 // ── Surface climbing state (planet_surface mode) ──────────────────────────────
-export type LandingPhase = 'none' | 'touching_down' | 'disembarking' | 'tethering' | 'on_surface'
+export type LandingPhase = 'none' | 'touching_down' | 'disembarking' | 'tethering' | 'on_surface' | 'reboarding'
 
 export interface SurfaceState {
   // ── Landing / disembark sequence ──

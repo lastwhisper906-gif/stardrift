@@ -54,6 +54,7 @@ export class HUD {
   private evaBanner!: HTMLElement
   private surfaceLockHint!: HTMLElement
   private surfaceControlHint!: HTMLElement
+  private reboardPrompt!: HTMLElement
   private dockTimer = 0
   private prevHull = 100
   private _titleDismissed = false
@@ -399,8 +400,23 @@ export class HUD {
     surfaceControlHint.textContent = 'Q/E plant axe  ·  W advance  ·  A/D rotate  ·  F lift off'
     this.root.appendChild(surfaceControlHint)
 
+    // ── Surface: re-board prompt (shown when near the parked subship) ────────
+    const reboardPrompt = document.createElement('div')
+    reboardPrompt.style.cssText = `
+      position:absolute;bottom:68px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(0,20,35,0.72);
+      border:1px solid rgba(0,200,255,0.50);
+      padding:8px 22px;border-radius:3px;
+      color:#00ccff;font-size:13px;letter-spacing:2px;
+      text-shadow:0 0 10px #00aaff;
+    `
+    reboardPrompt.textContent = '[F]  탑승  BOARD'
+    this.root.appendChild(reboardPrompt)
+
     this.surfaceLockHint    = surfaceLockHint
     this.surfaceControlHint = surfaceControlHint
+    this.reboardPrompt      = reboardPrompt
     this.dockBanner     = dockBanner
     this.dockPrompt     = dockPrompt
     this.landPrompt     = landPrompt
@@ -572,6 +588,10 @@ export class HUD {
 
   setSurfaceControlHint(show: boolean): void {
     this.surfaceControlHint.style.display = show ? 'block' : 'none'
+  }
+
+  setReboardPrompt(show: boolean): void {
+    this.reboardPrompt.style.display = show ? 'block' : 'none'
   }
 
   flashHit(): void {

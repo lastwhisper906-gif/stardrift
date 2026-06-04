@@ -237,4 +237,33 @@ export class CameraController {
     const fwdWorld = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, Math.min(1, t + 0.3))
     this.camera.lookAt(fwdWorld)
   }
+
+  /**
+   * Capture the current surface-eye position and the subship cockpit eye as the
+   * lerp endpoints for the reboarding camera transition (reverse of disembark).
+   */
+  beginReboardLerp(subshipGroup: Group): void {
+    // Start = current surface eye (camera is already there)
+    this._lerpStart.copy(this.camera.position)
+    this.shipGroup.localToWorld(this._lerpStart)
+
+    // End = subship cockpit eye in world space
+    this._tmpV.copy(SUBSHIP_LOCAL)
+    subshipGroup.localToWorld(this._tmpV)
+    this._lerpEnd.copy(this._tmpV)
+  }
+
+  /**
+   * Lerp camera from surface eye back to subship cockpit eye.
+   * @param t  0→1 progress (eased externally)
+   */
+  applyReboardLerp(t: number): void {
+    const lerpWorld = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, t)
+    this.shipGroup.worldToLocal(lerpWorld)
+    this.camera.position.copy(lerpWorld)
+
+    // Lead the look direction slightly ahead of position
+    const fwdWorld = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, Math.min(1, t + 0.3))
+    this.camera.lookAt(fwdWorld)
+  }
 }

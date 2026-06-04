@@ -71,6 +71,14 @@ camCtrl.setSubshipGroup(scene.subship.group)
     character.position.set(2.2, character.position.y, 39)
     camCtrl.setWalkYaw(Math.PI)
   },
+  // Surface test helpers — used by Playwright to verify Phase A reboard logic
+  getSurfaceDistToSubship: () => +charWorldPos.distanceTo(scene.subship.group.position).toFixed(1),
+  snapCharToSubship: () => {
+    // Move charWorldPos directly under the parked subship for reboard testing
+    const center = planetEvent.getPlanetCenter()
+    const dir = scene.subship.group.position.clone().sub(center).normalize()
+    charWorldPos.copy(center).addScaledVector(dir, PLANET_RADIUS + SURFACE_FOOT)
+  },
 }
 
 // Ice axe view — 1st-person axes parented to camera (planet_surface mode)
@@ -133,8 +141,10 @@ let landCooldown = 0           // seconds; >0 suppresses land prompt after lift-
 const _hangarWP    = new Vector3()
 const _shipUpVec   = new Vector3(0, 1, 0)   // local +y of the sub-ship
 const _landQuat    = new Quaternion()        // scratch for landing orientation
+const _landedEuler = new Euler(0, 0, 0, 'YXZ')  // scratch for syncing landed rotation to subshipState
 
 // ── Planet surface exploration ────────────────────────────────────────────────
+const REBOARD_DIST = 8   // metres — player must be this close to the parked subship to re-board
 let planetLandPhase: 'none' | 'on_surface' = 'none'
 const charWorldPos   = new Vector3()
 const _charLocalTmp  = new Vector3()
@@ -182,6 +192,7 @@ function resetGame(): void {
   hud.setAnchorPrompt(false, false)
   hud.setSurfaceLockHint(false)
   hud.setSurfaceControlHint(false)
+  hud.setReboardPrompt(false)
   hud.setMinerals(0)
   hud.hideEndScreen()
   planetLandPhase          = 'none'
@@ -292,19 +303,18 @@ function loop(): void {
         audio.setThrottle(0)
         hud.setDockPrompt(false)
       }
-    } else if (mode === 'planet_surface') {
-      // ── Lift off from planet ─────────────────────────────────────────────
-      planetLandPhase  = 'none'
-      landCooldown     = 15    // suppress land prompt for 15s after lift-off
-      character.mesh.visible   = true
-      iceAxeView.group.visible = false
-      keyboard.releasePointerLock()
-      camCtrl.setMode('subship_piloting')
-      subshipArms.setVisible(true)
-      scene.subship.setExteriorVisible(false)
-      planetEvent.markComplete()
-      hud.setAnchorPrompt(false, false)
-      room.setState({ surface: createInitialSurfaceState() })
+    } else if (mode === 'planet_surface' && room.getState().surface.landingPhase === 'on_surface') {
+      // ── Re-board the parked subship (must be nearby) ─────────────────────
+      const _distToSub = charWorldPos.distanceTo(scene.subship.group.position)
+      if (_distToSub <= REBOARD_DIST) {
+        keyboard.releasePointerLock()
+        camCtrl.beginReboardLerp(scene.subship.group)
+        hud.setAnchorPrompt(false, false)
+        hud.setReboardPrompt(false)
+        room.setState({ surface: { ...room.getState().surface,
+          landingPhase: 'reboarding', landingProgress: 0 } })
+      }
+      // else: too far away — the HUD prompt already guides the player back
     } else if (mode === 'piloting' || mode === 'exterior') {
       character.placeAtHelm()
       camCtrl.setMode('walking')
@@ -336,6 +346,8 @@ function loop(): void {
     if (subshipLocalY >= 0) {
       scene.subship.group.position.set(0, 0, 40)
       launchPhase = 'docked'
+      // If returning from planet, complete the event now that we're safely docked
+      if (eventManager.getActiveEventId() === 'planet') planetEvent.markComplete()
       // Return pilot to walking mode
       character.placeNearSubship()
       camCtrl.setMode('walking')
@@ -555,6 +567,19 @@ function loop(): void {
         camCtrl.beginDisembarkLerp()
         subshipArms.setVisible(false)   // hide cockpit arms as camera leaves cockpit
         iceAxeView.group.visible = true
+
+        // Snapshot the landed orientation + zero velocity so that when the player
+        // re-boards after mining, physics resumes from the surface-aligned pose
+        // instead of snapping back to [0,0,0] rotation (which would put the
+        // camera ~3 m inside the planet sphere, making the planet appear to vanish).
+        if (subshipState) {
+          _landedEuler.setFromQuaternion(scene.subship.group.quaternion)
+          subshipState = { ...subshipState,
+            rotation: [_landedEuler.x, _landedEuler.y, _landedEuler.z],
+            velocity: [0, 0, 0],
+          }
+        }
+
         room.setState({ surface: { ...room.getState().surface, landingPhase: 'disembarking', landingProgress: 0 } })
       }
     } else if (surf.landingPhase === 'disembarking') {
@@ -587,6 +612,26 @@ function loop(): void {
         room.setState({ surface: { ...createInitialSurfaceState(),
           landingPhase: 'on_surface', landingProgress: 1,
           leftAnchorPos: landPos, rightAnchorPos: landPos } })
+      }
+    } else if (surf.landingPhase === 'reboarding') {
+      // ── Camera lerps from surface eye back to subship cockpit eye ────────
+      const REBOARD_DUR = 1.4
+      const progress = Math.min(1, surf.landingProgress + dt / REBOARD_DUR)
+      room.setState({ surface: { ...surf, landingProgress: progress } })
+
+      const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
+      camCtrl.applyReboardLerp(ease)
+
+      if (progress >= 1) {
+        // Camera is back at cockpit eye — hand control to subship_piloting
+        planetLandPhase          = 'none'
+        landCooldown             = 15   // suppress land prompt briefly after reboarding
+        iceAxeView.group.visible = false
+        character.mesh.visible   = true
+        subshipArms.setVisible(true)
+        scene.subship.setExteriorVisible(false)
+        camCtrl.setMode('subship_piloting')
+        room.setState({ surface: createInitialSurfaceState() })
       }
     }
   }
@@ -623,8 +668,8 @@ function loop(): void {
         ...(_mouseDelta.dx !== 0 ? { mouseDX: _mouseDelta.dx } : {}),
         ...(_mouseDelta.dy !== 0 ? { mouseDY: _mouseDelta.dy } : {}) }
     : undefined
-  // Only call camCtrl.update when not in a landing animation or tether phase
-  if (_surfLandPhase !== 'disembarking' && _surfLandPhase !== 'tethering') {
+  // Only call camCtrl.update when not in a landing/reboard animation or tether phase
+  if (_surfLandPhase !== 'disembarking' && _surfLandPhase !== 'tethering' && _surfLandPhase !== 'reboarding') {
     camCtrl.update(character, dt, _planetCtx)
   }
 
@@ -705,10 +750,17 @@ function loop(): void {
     mode === 'planet_surface'   ? 'ON SURFACE' : mode
   )
 
-  // ── Surface HUD hints (pointer-lock prompt + control guide) ──────────────
+  // ── Surface HUD hints (pointer-lock prompt + control guide + reboard) ───
   const onSurface = mode === 'planet_surface'
-  hud.setSurfaceLockHint(onSurface && !keyboard.isPointerLocked())
-  hud.setSurfaceControlHint(onSurface)
+  const _surfActive = onSurface && room.getState().surface.landingPhase === 'on_surface'
+  hud.setSurfaceLockHint(_surfActive && !keyboard.isPointerLocked())
+  hud.setSurfaceControlHint(_surfActive)
+  if (_surfActive) {
+    const _dts = charWorldPos.distanceTo(scene.subship.group.position)
+    hud.setReboardPrompt(_dts <= REBOARD_DIST)
+  } else {
+    hud.setReboardPrompt(false)
+  }
 
   // ── Mission progress + docking check ────────────────────────────────────
   const [px, py, pz]   = ship.position
