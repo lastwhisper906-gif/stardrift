@@ -54,6 +54,7 @@ export function updateClimbing(
   charWorldPos:  Vector3,             // mutated in place
   planetCenter:  Vector3,
   camYaw:        number,              // facing direction (radians)
+  camPitch:      number,              // vertical look angle (radians, + = up)
   input:         ClimberInput,
   dt:            number,
   nodes:         ResourceNode[],
@@ -93,8 +94,8 @@ export function updateClimbing(
   // ── Axe swing (only when not already pulling and cooldown ready) ──────────
   const canSwing = s.swingCooldown <= 0 && s.pullProgress === 0
   // advance (W key) auto-selects whichever axe is active — same as pressing Q or E
-  const leftTrigger  = input.leftAxe  || (input.advance && s.activeAxe === 'left')
-  const rightTrigger = input.rightAxe || (input.advance && s.activeAxe === 'right')
+  const leftTrigger  = input.leftAxe  || input.mouseLeft  || (input.advance && s.activeAxe === 'left')
+  const rightTrigger = input.rightAxe || input.mouseRight || (input.advance && s.activeAxe === 'right')
   const swingLeft  = leftTrigger  && s.activeAxe === 'left'  && canSwing
   const swingRight = rightTrigger && s.activeAxe === 'right' && canSwing
 
@@ -103,9 +104,14 @@ export function updateClimbing(
 
   if (swingLeft || swingRight) {
     // Compute anchor: CLIMBING.swingReach metres ahead on sphere surface
-    const up   = surfaceNormal(charWorldPos, planetCenter)
+    // Build 3D aim direction from yaw and pitch, then project onto sphere tangent plane
+    const up = surfaceNormal(charWorldPos, planetCenter)
     _fwd.set(-Math.sin(camYaw), 0, -Math.cos(camYaw))
-    const fwdT = tangentProject(_fwd, up)
+    const fwdFlat = tangentProject(_fwd, up)  // forward on tangent plane
+    // Combine tangent forward and surface normal using pitch angle
+    _fwd.copy(fwdFlat).multiplyScalar(Math.cos(camPitch))
+      .addScaledVector(up, Math.sin(camPitch))
+    const fwdT = tangentProject(_fwd, up)  // project 3D aim back to tangent plane
 
     _pos.copy(charWorldPos)
     _anchor.copy(_pos).addScaledVector(fwdT, CLIMBING.swingReach)

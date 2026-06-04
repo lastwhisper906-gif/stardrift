@@ -15,6 +15,8 @@ export interface ClimberInput {
   advance:    boolean   // W — auto-swing the currently active axe (WASD forward)
   rotateLeft:  boolean  // A — rotate camera yaw left
   rotateRight: boolean  // D — rotate camera yaw right
+  mouseLeft:  boolean   // left mouse button = left axe
+  mouseRight: boolean   // right mouse button = right axe
 }
 
 export interface StationInput {

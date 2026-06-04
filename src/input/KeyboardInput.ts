@@ -7,6 +7,8 @@ export class KeyboardInput {
   private mouseDX = 0
   private mouseDY = 0
   private pointerLocked = false
+  private mouseLeftDown  = false
+  private mouseRightDown = false
 
   constructor() {
     window.addEventListener('keydown', (e) => {
@@ -25,8 +27,20 @@ export class KeyboardInput {
         this.mouseDY += e.movementY
       }
     })
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this.mouseLeftDown  = true
+      if (e.button === 2) this.mouseRightDown = true
+    })
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseLeftDown  = false
+      if (e.button === 2) this.mouseRightDown = false
+    })
+    window.addEventListener('contextmenu', (e) => e.preventDefault())
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = !!document.pointerLockElement
+    })
+    document.addEventListener('pointerlockerror', () => {
+      console.warn('[KeyboardInput] Pointer lock request failed')
     })
 
     // Re-acquire pointer lock on canvas click (browser requires a user gesture;
@@ -89,7 +103,7 @@ export class KeyboardInput {
     }
   }
 
-  /** Planet surface climbing: W=advance, Q=left axe, E=right axe, A/D=rotate */
+  /** Planet surface climbing: W=advance, Q=left axe, E=right axe, A/D=rotate, LMB/RMB=axes */
   getClimberInput(): ClimberInput {
     const k = this.keys
     return {
@@ -98,6 +112,8 @@ export class KeyboardInput {
       advance:    !!(k['KeyW'] || k['ArrowUp']),
       rotateLeft:  !!(k['KeyA'] || k['ArrowLeft']),
       rotateRight: !!(k['KeyD'] || k['ArrowRight']),
+      mouseLeft:  this.mouseLeftDown,
+      mouseRight: this.mouseRightDown,
     }
   }
 

@@ -207,6 +207,9 @@ export class CameraController {
   /** Exposed for character-relative movement in main.ts */
   getCamYaw(): number { return this.camYaw }
 
+  /** Exposed so ClimbingSystem can factor pitch into axe-anchor direction */
+  getCamPitch(): number { return this.camPitch }
+
   /**
    * Capture current camera world position as the lerp start.
    * Call once when the disembarking phase begins.

@@ -80,6 +80,38 @@ camCtrl.setSubshipGroup(scene.subship.group)
     const dir = scene.subship.group.position.clone().sub(center).normalize()
     charWorldPos.copy(center).addScaledVector(dir, PLANET_RADIUS + SURFACE_FOOT)
   },
+  triggerLand: () => {
+    // Directly start landing sequence (bypasses F key — used for headless Playwright tests)
+    if (camCtrl.mode !== 'subship_piloting' || launchPhase !== 'flying' || planetLandPhase !== 'none') return false
+    planetLandPhase = 'on_surface'
+    hud.setLandPrompt(false)
+    const surface = createInitialSurfaceState()
+    surface.landingPhase = 'touching_down'
+    surface.landingProgress = 0
+    room.setState({ surface })
+    lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false
+    return true
+  },
+  getLandState: () => ({
+    landPromptActive,
+    planetLandPhase,
+    landCooldown: +landCooldown.toFixed(2),
+    distToPlanet: subshipState
+      ? +new Vector3(...subshipState.position as [number,number,number])
+          .distanceTo(planetEvent.getPlanetCenter()).toFixed(1)
+      : null,
+    surfaceLandPhase: room.getState().surface.landingPhase,
+    surfaceProgress: +room.getState().surface.landingProgress.toFixed(3),
+    tick: room.getState().tick,
+  }),
+  teleportSubshipToPlanet: () => {
+    // Warp subship to 10m above planet surface (within PLANET_RADIUS+18 land threshold)
+    if (!subshipState) return
+    const c = planetEvent.getPlanetCenter()
+    const targetZ = c.z + (PLANET_RADIUS + 10)
+    subshipState = { ...subshipState, position: [c.x, c.y, targetZ], velocity: [0, 0, 0] }
+    scene.subship.group.position.set(c.x, c.y, targetZ)
+  },
 }
 
 // Ice axe view — 1st-person axes parented to camera (planet_surface mode)
@@ -150,9 +182,11 @@ let planetLandPhase: 'none' | 'on_surface' = 'none'
 const charWorldPos   = new Vector3()
 const _charLocalTmp  = new Vector3()
 let lastSwinging: 'left' | 'right' | 'none' = 'none'
-let prevLeftAxe  = false
-let prevRightAxe = false
-let prevAdvance  = false
+let prevLeftAxe   = false
+let prevRightAxe  = false
+let prevAdvance   = false
+let prevMouseLeft = false
+let prevMouseRight = false
 
 // Display-smoothed position/rotation (lerped each frame for buttery movement)
 let dispX = 0, dispY = 0, dispZ = 0
@@ -204,6 +238,7 @@ function resetGame(): void {
   landCooldown     = 0
   scene.subship.deployLegs(0)
   lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false; prevAdvance = false
+  prevMouseLeft = false; prevMouseRight = false
 }
 
 const TARGET_MS = 1000 / 60   // ~16.67 ms — cap render at 60 fps on high-refresh displays
@@ -371,21 +406,26 @@ function loop(): void {
     if (st0.surface.landingPhase === 'on_surface') {
       const climbInput = keyboard.getClimberInput()
 
-      // Edge-detect axe swings — fire once per key press, not every frame.
+      // Edge-detect axe swings — fire once per press/click, not every frame.
       // 'advance' (W) is also edge-detected so each W tap = one axe swing.
-      const leftJust    = climbInput.leftAxe  && !prevLeftAxe
-      const rightJust   = climbInput.rightAxe && !prevRightAxe
+      const mouseLeftJust  = climbInput.mouseLeft  && !prevMouseLeft
+      const mouseRightJust = climbInput.mouseRight && !prevMouseRight
+      const leftJust    = (climbInput.leftAxe  && !prevLeftAxe)  || mouseLeftJust
+      const rightJust   = (climbInput.rightAxe && !prevRightAxe) || mouseRightJust
       const advanceJust = climbInput.advance  && !prevAdvance
-      prevLeftAxe  = climbInput.leftAxe
-      prevRightAxe = climbInput.rightAxe
-      prevAdvance  = climbInput.advance
-      const edgeInput = { ...climbInput, leftAxe: leftJust, rightAxe: rightJust, advance: advanceJust }
+      prevLeftAxe   = climbInput.leftAxe
+      prevRightAxe  = climbInput.rightAxe
+      prevAdvance   = climbInput.advance
+      prevMouseLeft  = climbInput.mouseLeft
+      prevMouseRight = climbInput.mouseRight
+      const edgeInput = { ...climbInput, leftAxe: leftJust, rightAxe: rightJust, advance: advanceJust, mouseLeft: false, mouseRight: false }
 
       const result = updateClimbing(
         st0.surface,
         charWorldPos,
         planetEvent.getPlanetCenter(),
         camCtrl.getCamYaw(),
+        camCtrl.getCamPitch(),
         edgeInput,
         dt,
         planetEvent.mesh.nodes,
@@ -404,11 +444,11 @@ function loop(): void {
 
       // Ice axe view animation
       lastSwinging = leftJust ? 'left' : rightJust ? 'right' : 'none'
-      if (lastSwinging !== 'none') iceAxeView.triggerSwing(lastSwinging)
+      if (lastSwinging !== 'none') {
+        iceAxeView.triggerSwing(lastSwinging)
+        camCtrl.shake(0.15)   // small impact shake at the moment of strike
+      }
       iceAxeView.update(
-        lastSwinging,
-        result.surface.pullProgress,
-        result.surface.activeAxe,
         dt,
         result.surface.leftAnchorPos,
         result.surface.rightAnchorPos,
@@ -625,6 +665,7 @@ function loop(): void {
       if (tetherView.isComplete) {
         // Tether attached — enter full planet_surface mode
         camCtrl.setMode('planet_surface')
+        keyboard.requestPointerLock()   // auto-lock pointer for mouse-look on surface
         subshipArms.setVisible(false)   // cockpit arms hidden; ice axes take over
         hud.setAnchorPrompt(true, false)
         const landPos: [number, number, number] = [charWorldPos.x, charWorldPos.y, charWorldPos.z]

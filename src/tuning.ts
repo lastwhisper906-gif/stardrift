@@ -58,6 +58,11 @@ export const CLIMBING = {
   slideSpeed:    0.6,   // m/s slide-down when no anchor
   miningStrikes: 3,     // consecutive strikes to collect 1 ore
   mineNodeDist:  7.5,   // m axe reach to mine node
+  // Strike animation phases (seconds)
+  strikeWindUp:  0.10,  // axe pulls back quickly
+  strikeImpact:  0.08,  // axe drives sharply forward/down into surface
+  strikeHold:    0.12,  // brief hold at impact (weight feeling)
+  strikeReturn:  0.20,  // slow pull back to rest
 }
 
 // ── Asteroid event ──────────────────────────────────────────────────────────
