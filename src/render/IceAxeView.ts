@@ -8,10 +8,10 @@ import {
 
 // Two ice axes shown in 1st-person (parented directly to the camera)
 
-const REST_Y    = -0.28   // hanging at side
+const REST_Y    = -0.18   // raised from -0.28 so hands stay inside 85° FOV
 const SWING_Y   =  0.05   // raised for swing
-const REST_Z    = -0.30
-const SWING_Z   = -0.45
+const REST_Z    = -0.35   // pushed out from -0.30 for a natural arm-length extension
+const SWING_Z   = -0.48
 const REST_ROT  = -0.25   // tilt at rest
 const SWING_ROT = -0.80   // steeper tilt at swing
 const PLANT_ROT =  0.35   // tilted forward when planted

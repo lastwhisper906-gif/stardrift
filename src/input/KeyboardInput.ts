@@ -28,6 +28,15 @@ export class KeyboardInput {
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = !!document.pointerLockElement
     })
+
+    // Re-acquire pointer lock on canvas click (browser requires a user gesture;
+    // calling requestPointerLock from the rAF loop silently fails in Chrome/Firefox)
+    const canvas = document.querySelector('canvas')
+    if (canvas) {
+      canvas.addEventListener('click', () => {
+        if (!this.pointerLocked) canvas.requestPointerLock()
+      })
+    }
   }
 
   requestPointerLock(): void {
@@ -62,7 +71,7 @@ export class KeyboardInput {
     const k = this.keys
     return {
       yaw:           (k['KeyA'] || k['ArrowLeft']  ? -1 : 0) + (k['KeyD'] || k['ArrowRight'] ? 1 : 0),
-      pitch:         (k['KeyR'] || k['ArrowDown']  ? -1 : 0) + (k['KeyF'] || k['ArrowUp']   ? 1 : 0),
+      pitch:         (k['KeyR'] || k['ArrowDown']  ? -1 : 0) + (k['ArrowUp']                 ? 1 : 0),
       roll:          (k['KeyQ'] ? -1 : 0) + (k['KeyE'] ? 1 : 0),
       throttleDelta: (k['KeyW'] ?  1 : 0) + (k['KeyS'] ? -1 : 0),
       verticalDelta: (k['KeyZ'] ?  1 : 0) + (k['KeyX'] ? -1 : 0),

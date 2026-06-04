@@ -52,6 +52,8 @@ export class HUD {
   private mineralFill!: HTMLElement
   private mineralVal!: HTMLElement
   private evaBanner!: HTMLElement
+  private surfaceLockHint!: HTMLElement
+  private surfaceControlHint!: HTMLElement
   private dockTimer = 0
   private prevHull = 100
   private _titleDismissed = false
@@ -215,7 +217,7 @@ export class HUD {
       <div style="color:#4488aa;font-size:14px;letter-spacing:5px;margin-bottom:36px">DEEP SPACE SURVIVAL MISSION</div>
       <div style="color:#2a3a4a;background:rgba(0,10,20,0.7);border:1px solid rgba(0,100,150,0.2);padding:18px 32px;border-radius:4px;font-size:11px;line-height:2.0;text-align:left;max-width:540px;margin-bottom:30px">
         <span style="color:#4488aa;letter-spacing:2px">WALKING MODE</span>&nbsp;&nbsp;WASD move • Shift run • Space jump • C crouch<br>
-        <span style="color:#4488aa;letter-spacing:2px">PILOTING    </span>&nbsp;&nbsp;W/S throttle • A/D yaw • R/F pitch • Q/E roll • Z/X vertical<br>
+        <span style="color:#4488aa;letter-spacing:2px">PILOTING    </span>&nbsp;&nbsp;W/S throttle • A/D yaw • ↑/R pitch • Q/E roll • Z/X vertical<br>
         <span style="color:#4488aa;letter-spacing:2px">INTERACT    </span>&nbsp;&nbsp;F sit/stand • Tab exterior view<br>
         <span style="color:#00ff88;letter-spacing:2px">STATIONS    </span>&nbsp;&nbsp;🟩 REPAIR (left) • 🟦 O₂ (right) — hold E to use<br>
         <span style="color:#ff8844;letter-spacing:2px">EVENTS      </span>&nbsp;&nbsp;ASTEROID: steer away • ALIEN: press Space to fire
@@ -368,6 +370,37 @@ export class HUD {
       </span>
     `
     this.root.appendChild(evaBanner)
+
+    // ── Surface: pointer-lock hint (shown when mouse look is not yet acquired) ─
+    const surfaceLockHint = document.createElement('div')
+    surfaceLockHint.style.cssText = `
+      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      text-align:center;display:none;
+      background:rgba(0,10,20,0.70);
+      border:1px solid rgba(0,160,255,0.35);
+      padding:10px 24px;border-radius:4px;
+      color:#66bbff;font-size:13px;letter-spacing:2px;
+      text-shadow:0 0 8px #0088cc;
+      animation:pulse 1.5s ease-in-out infinite;
+    `
+    surfaceLockHint.textContent = 'Click to look around'
+    this.root.appendChild(surfaceLockHint)
+
+    // ── Surface: control hints (Q/E/W movement keys) ─────────────────────────
+    const surfaceControlHint = document.createElement('div')
+    surfaceControlHint.style.cssText = `
+      position:absolute;bottom:40px;left:50%;transform:translateX(-50%);
+      text-align:center;display:none;
+      background:rgba(0,12,20,0.60);
+      border:1px solid rgba(0,180,120,0.25);
+      padding:6px 18px;border-radius:3px;
+      color:#448877;font-size:11px;letter-spacing:1px;
+    `
+    surfaceControlHint.textContent = 'Q/E plant axe  ·  W advance  ·  A/D rotate  ·  F lift off'
+    this.root.appendChild(surfaceControlHint)
+
+    this.surfaceLockHint    = surfaceLockHint
+    this.surfaceControlHint = surfaceControlHint
     this.dockBanner     = dockBanner
     this.dockPrompt     = dockPrompt
     this.landPrompt     = landPrompt
@@ -459,6 +492,7 @@ export class HUD {
   }
 
   setMinerals(n: number): void {
+    if (n <= 0) { this.mineralRow.style.display = 'none'; return }
     this.mineralRow.style.display = 'block'
     const pct = Math.min(100, n * 20)  // 5 minerals = 100%
     this.mineralFill.style.width = `${pct}%`
@@ -530,6 +564,14 @@ export class HUD {
 
   setCombatPrompt(show: boolean): void {
     this.combatPrompt.style.display = show ? 'block' : 'none'
+  }
+
+  setSurfaceLockHint(show: boolean): void {
+    this.surfaceLockHint.style.display = show ? 'block' : 'none'
+  }
+
+  setSurfaceControlHint(show: boolean): void {
+    this.surfaceControlHint.style.display = show ? 'block' : 'none'
   }
 
   flashHit(): void {

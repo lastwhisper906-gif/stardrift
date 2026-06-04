@@ -12,10 +12,10 @@ import {
 // Positioned in camera-local space so the pilot always sees their hands
 // on the HOTAS controls at the bottom of the screen.
 
-const SUIT_COL  = 0x252d3a
-const GLOVE_COL = 0x141c28
-const CUFF_COL  = 0x1a2030
-const STICK_COL = 0x080c12
+const SUIT_COL  = 0x3a4a5e   // lightened from 0x252d3a — visible against dark cockpit
+const GLOVE_COL = 0x243040   // lightened from 0x141c28
+const CUFF_COL  = 0x2a3448   // lightened from 0x1a2030
+const STICK_COL = 0x141c28   // lightened from 0x080c12
 
 // depthTest=false ensures arms always render on top of 3-D scene geometry
 // (the HOTAS sticks in world space would otherwise occlude camera-parented arms)
@@ -26,9 +26,9 @@ function noDepth(m: MeshStandardMaterial): MeshStandardMaterial {
 
 function buildPilotArm(side: number): Group {
   const g        = new Group()
-  const suitMat  = noDepth(new MeshStandardMaterial({ color: SUIT_COL,  metalness: 0.15, roughness: 0.75 }))
-  const gloveMat = noDepth(new MeshStandardMaterial({ color: GLOVE_COL, metalness: 0.10, roughness: 0.88 }))
-  const cuffMat  = noDepth(new MeshStandardMaterial({ color: CUFF_COL,  metalness: 0.50, roughness: 0.45 }))
+  const suitMat  = noDepth(new MeshStandardMaterial({ color: SUIT_COL,  metalness: 0.15, roughness: 0.75, emissive: SUIT_COL,  emissiveIntensity: 0.18 }))
+  const gloveMat = noDepth(new MeshStandardMaterial({ color: GLOVE_COL, metalness: 0.10, roughness: 0.88, emissive: GLOVE_COL, emissiveIntensity: 0.18 }))
+  const cuffMat  = noDepth(new MeshStandardMaterial({ color: CUFF_COL,  metalness: 0.50, roughness: 0.45, emissive: CUFF_COL,  emissiveIntensity: 0.12 }))
   const stickMat = noDepth(new MeshStandardMaterial({ color: STICK_COL, metalness: 0.22, roughness: 0.90 }))
 
   // Forearm — runs from off-screen bottom up to the hand

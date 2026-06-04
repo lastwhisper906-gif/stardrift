@@ -127,20 +127,16 @@ const LAUNCH_ANIM_SPD = 4.5   // m/s
 
 let subshipState: SubshipState | null = null
 let landPromptActive = false   // hysteresis flag — prevents prompt flickering
+let landCooldown = 0           // seconds; >0 suppresses land prompt after lift-off
 
 // Pre-allocated vectors — reused every frame, zero GC pressure
 const _hangarWP    = new Vector3()
-const _surfUp      = new Vector3()
-const _camFwd      = new Vector3()
-const _fwdTangent  = new Vector3()
-const _rgtTangent  = new Vector3()
 const _shipUpVec   = new Vector3(0, 1, 0)   // local +y of the sub-ship
 const _landQuat    = new Quaternion()        // scratch for landing orientation
 
 // ── Planet surface exploration ────────────────────────────────────────────────
 let planetLandPhase: 'none' | 'on_surface' = 'none'
 const charWorldPos   = new Vector3()
-const FOOT_OFFSET    = SURFACE_FOOT + SURFACE_EYE   // foot + eye = total offset for placement
 const _charLocalTmp  = new Vector3()
 let lastSwinging: 'left' | 'right' | 'none' = 'none'
 let prevLeftAxe  = false
@@ -184,11 +180,15 @@ function resetGame(): void {
   hud.setDockPrompt(false)
   hud.setLandPrompt(false)
   hud.setAnchorPrompt(false, false)
+  hud.setSurfaceLockHint(false)
+  hud.setSurfaceControlHint(false)
+  hud.setMinerals(0)
   hud.hideEndScreen()
   planetLandPhase          = 'none'
   iceAxeView.group.visible = false
   subshipArms.setVisible(false)
   landPromptActive = false
+  landCooldown     = 0
   scene.subship.deployLegs(0)
   lastSwinging = 'none'; prevLeftAxe = false; prevRightAxe = false; prevAdvance = false
 }
@@ -295,6 +295,7 @@ function loop(): void {
     } else if (mode === 'planet_surface') {
       // ── Lift off from planet ─────────────────────────────────────────────
       planetLandPhase  = 'none'
+      landCooldown     = 15    // suppress land prompt for 15s after lift-off
       character.mesh.visible   = true
       iceAxeView.group.visible = false
       keyboard.releasePointerLock()
@@ -549,9 +550,10 @@ function loop(): void {
       if (progress >= 1) {
         const center2  = planetEvent.getPlanetCenter()
         const toCenter = scene.subship.group.position.clone().sub(center2)
-        charWorldPos.copy(center2).addScaledVector(toCenter.normalize(), PLANET_RADIUS + FOOT_OFFSET)
+        charWorldPos.copy(center2).addScaledVector(toCenter.normalize(), PLANET_RADIUS + SURFACE_FOOT)
         camCtrl.setWalkYaw(Math.PI + Math.atan2(toCenter.x, toCenter.z))
         camCtrl.beginDisembarkLerp()
+        subshipArms.setVisible(false)   // hide cockpit arms as camera leaves cockpit
         iceAxeView.group.visible = true
         room.setState({ surface: { ...room.getState().surface, landingPhase: 'disembarking', landingProgress: 0 } })
       }
@@ -578,7 +580,7 @@ function loop(): void {
       if (tetherView.isComplete) {
         // Tether attached — enter full planet_surface mode
         camCtrl.setMode('planet_surface')
-        keyboard.requestPointerLock()
+        subshipArms.setVisible(false)   // cockpit arms hidden; ice axes take over
         hud.setAnchorPrompt(true, false)
         const landPos: [number, number, number] = [charWorldPos.x, charWorldPos.y, charWorldPos.z]
         planetEvent.scatterNodesNear(charWorldPos)
@@ -645,8 +647,9 @@ function loop(): void {
   }
 
   // Land prompt — hysteresis: show at <PLANET_RADIUS+18, hide only at >PLANET_RADIUS+40
-  // This prevents flickering when the sub-ship bounces at the collision boundary.
-  if (eventManager.getActiveEventId() === 'planet' && launchPhase === 'flying') {
+  // Suppressed for landCooldown seconds after lift-off to prevent instant re-prompt.
+  if (landCooldown > 0) landCooldown = Math.max(0, landCooldown - dt)
+  if (eventManager.getActiveEventId() === 'planet' && launchPhase === 'flying' && landCooldown === 0) {
     const _distToPlanet = scene.subship.group.position.distanceTo(planetEvent.getPlanetCenter())
     if (!landPromptActive && _distToPlanet < PLANET_RADIUS + 18) landPromptActive = true
     if (landPromptActive  && _distToPlanet > PLANET_RADIUS + 40) landPromptActive = false
@@ -696,7 +699,16 @@ function loop(): void {
   }
 
   // ── Mode indicator ────────────────────────────────────────────────────────
-  hud.setMode(mode === 'exterior' ? 'EXT VIEW' : mode === 'subship_piloting' ? 'SUB-SHIP' : mode)
+  hud.setMode(
+    mode === 'exterior'         ? 'EXT VIEW'  :
+    mode === 'subship_piloting' ? 'SUB-SHIP'  :
+    mode === 'planet_surface'   ? 'ON SURFACE' : mode
+  )
+
+  // ── Surface HUD hints (pointer-lock prompt + control guide) ──────────────
+  const onSurface = mode === 'planet_surface'
+  hud.setSurfaceLockHint(onSurface && !keyboard.isPointerLocked())
+  hud.setSurfaceControlHint(onSurface)
 
   // ── Mission progress + docking check ────────────────────────────────────
   const [px, py, pz]   = ship.position
@@ -732,28 +744,3 @@ function loop(): void {
 }
 
 requestAnimationFrame(loop)
-
-// ── Planet surface helpers ─────────────────────────────────────────────────────
-
-function _snapToSurface(): void {
-  const C = planetEvent.getPlanetCenter()
-  _surfUp.copy(charWorldPos).sub(C).normalize()
-  charWorldPos.copy(C).addScaledVector(_surfUp, PLANET_RADIUS + FOOT_OFFSET)
-}
-
-function _sphereMoveChar(fwd: number, right: number, dt: number): void {
-  const C = planetEvent.getPlanetCenter()
-  _surfUp.copy(charWorldPos).sub(C).normalize()
-
-  // Camera-relative forward projected onto sphere tangent plane (Gram-Schmidt)
-  const yaw = camCtrl.getCamYaw()
-  _camFwd.set(-Math.sin(yaw), 0, -Math.cos(yaw))
-  _fwdTangent.copy(_camFwd).addScaledVector(_surfUp, -_surfUp.dot(_camFwd)).normalize()
-  if (_fwdTangent.lengthSq() < 0.01) return   // polar singularity guard
-  _rgtTangent.crossVectors(_surfUp, _fwdTangent)
-
-  charWorldPos
-    .addScaledVector(_fwdTangent, fwd   * 4.0 * dt)
-    .addScaledVector(_rgtTangent, right * 4.0 * dt)
-  _snapToSurface()
-}

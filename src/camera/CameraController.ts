@@ -64,7 +64,7 @@ export class CameraController {
       if (rotateRight) this.camYaw += YAW_SPEED * dt
       if (planetCtx.mouseDX) this.camYaw   += planetCtx.mouseDX * MOUSE_SENS
       // Subtract DY: movementY is positive when mouse moves DOWN, which should look DOWN (negative pitch)
-      if (planetCtx.mouseDY) this.camPitch  = Math.max(-1.3, Math.min(0.8,
+      if (planetCtx.mouseDY) this.camPitch  = Math.max(-1.48, Math.min(0.8,
         this.camPitch - planetCtx.mouseDY * MOUSE_SENS))
 
       const up  = this._tmpV.copy(charWorldPos).sub(planetCenter).normalize()

@@ -13,9 +13,9 @@ const TETHER_DURATION = 1.2  // seconds for the full attach animation
 
 function buildArm(): Group {
   const g     = new Group()
-  const suit  = new MeshStandardMaterial({ color: 0x252d3a, metalness: 0.12, roughness: 0.82 })
-  const glove = new MeshStandardMaterial({ color: 0x141c28, metalness: 0.10, roughness: 0.88 })
-  const cuffM = new MeshStandardMaterial({ color: 0x1a2030, metalness: 0.38, roughness: 0.55 })
+  const suit  = new MeshStandardMaterial({ color: 0x3a4a5e, metalness: 0.12, roughness: 0.82, emissive: 0x3a4a5e, emissiveIntensity: 0.18 })
+  const glove = new MeshStandardMaterial({ color: 0x243040, metalness: 0.10, roughness: 0.88, emissive: 0x243040, emissiveIntensity: 0.18 })
+  const cuffM = new MeshStandardMaterial({ color: 0x2a3448, metalness: 0.38, roughness: 0.55, emissive: 0x2a3448, emissiveIntensity: 0.12 })
   const metal = new MeshStandardMaterial({ color: 0x3a4455, metalness: 0.85, roughness: 0.20 })
 
   // Forearm
