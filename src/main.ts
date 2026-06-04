@@ -428,7 +428,9 @@ function loop(): void {
     const subInput = keyboard.getPilotInput()
     scene.subship.update(subInput, dt)   // animate HOTAS sticks
     subshipArms.update(subInput.yaw, subInput.throttleDelta, subInput.pitch, dt)
-    if (launchPhase === 'flying' && subshipState) {
+    const _surfSt = room.getState().surface
+    const _touchingDown = _surfSt.landingPhase === 'touching_down'
+    if (launchPhase === 'flying' && subshipState && !_touchingDown) {
       subshipState = updateSubship(subshipState, subInput, dt)
 
       // ── Planet surface collision + proximity drag ──────────────────────
@@ -443,6 +445,9 @@ function loop(): void {
         subshipState.rotation[0], subshipState.rotation[1], subshipState.rotation[2], 'YXZ',
       )
       audio.setThrottle(subshipState.throttle)
+    } else if (_touchingDown && subshipState) {
+      // During descent: fade thruster audio to zero so it's silent at touchdown
+      audio.setThrottle(subshipState.throttle * Math.max(0, 1 - _surfSt.landingProgress * 1.5))
     } else {
       audio.setThrottle(0)
     }
@@ -535,8 +540,13 @@ function loop(): void {
   {
     const surf = room.getState().surface
     if (surf.landingPhase === 'touching_down') {
-      const progress = Math.min(1, surf.landingProgress + dt / LANDING.touchdownDur)
+      const prevProg = surf.landingProgress
+      const progress  = Math.min(1, prevProg + dt / LANDING.touchdownDur)
       room.setState({ surface: { ...surf, landingProgress: progress } })
+
+      // One-shot shakes: primary hull contact, then secondary settle
+      if (prevProg < 0.87 && progress >= 0.87) camCtrl.shake(0.8)
+      if (prevProg < 0.95 && progress >= 0.95) camCtrl.shake(0.35)
 
       // Descend subship from stop radius toward surface
       const center      = planetEvent.getPlanetCenter()
