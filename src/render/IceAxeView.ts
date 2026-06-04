@@ -113,9 +113,10 @@ export class IceAxeView {
   private rightState = 0
 
   // Pre-allocated scratch
-  private readonly _plantQ   = new Quaternion()
-  private readonly _anchorV  = new Vector3()
-  private readonly _outward  = new Vector3()
+  private readonly _plantQ    = new Quaternion()
+  private readonly _anchorV   = new Vector3()
+  private readonly _outward   = new Vector3()
+  private readonly _negOutward = new Vector3()   // avoids clone() allocation per frame
 
   constructor() {
     this.group = new Group()
@@ -203,7 +204,8 @@ export class IceAxeView {
     planted.position.copy(this._anchorV).addScaledVector(this._outward, 0.30)
 
     // Orient: local +Y → into planet so the pick drives into the ice and handle sticks up
-    this._plantQ.setFromUnitVectors(_Y_AXIS, this._outward.clone().negate())
+    this._negOutward.copy(this._outward).negate()
+    this._plantQ.setFromUnitVectors(_Y_AXIS, this._negOutward)
     planted.quaternion.copy(this._plantQ)
   }
 

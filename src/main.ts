@@ -657,7 +657,9 @@ function loop(): void {
   }
 
   // ── Hangar hatch animation ───────────────────────────────────────────────
-  scene.corridorHangar.update(launchPhase !== 'docked', dt)
+  // Bay door only shown to the subship pilot, not to the walking player
+  const _showBayDoor = mode === 'subship_piloting' || launchInProgress
+  scene.corridorHangar.update(launchPhase !== 'docked', dt, _showBayDoor)
 
   // ── Sync ship group (lerped for smooth movement) ─────────────────────────
   const ship = room.getState().ship
@@ -696,7 +698,7 @@ function loop(): void {
   // ── HUD ──────────────────────────────────────────────────────────────────
   const nearHelm    = mode === 'walking' && character.isNearHelm()
   const nearSubship = mode === 'walking' && character.isNearSubship()
-  hud.setInteractPrompt(nearHelm || nearSubship)
+  hud.setInteractPrompt(nearHelm || nearSubship, nearSubship ? 'subship' : 'helm')
   hud.setLaunchPrompt(launchPhase === 'docked' && mode === 'subship_piloting')
 
   // Dock prompt: show when flying sub-ship near the hangar

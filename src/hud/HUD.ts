@@ -115,7 +115,7 @@ export class HUD {
       color:#00aaff;font-size:13px;letter-spacing:2px;
       text-shadow:0 0 8px #00aaff;
     `
-    interactPrompt.textContent = '[F]  SIT AT HELM'
+    interactPrompt.textContent = '[F]  SIT AT HELM'  // updated dynamically by setInteractPrompt
     this.root.appendChild(interactPrompt)
 
     // ── Launch prompt (shown when inside sub-ship, not yet launched) ──────
@@ -482,8 +482,13 @@ export class HUD {
     }
   }
 
-  setInteractPrompt(show: boolean): void {
+  setInteractPrompt(show: boolean, label: 'helm' | 'subship' = 'helm'): void {
     this.interactPrompt.style.display = show ? 'block' : 'none'
+    if (show) {
+      this.interactPrompt.textContent = label === 'subship'
+        ? '[F]  BOARD SUBSHIP'
+        : '[F]  SIT AT HELM'
+    }
   }
 
   setLaunchPrompt(show: boolean): void {

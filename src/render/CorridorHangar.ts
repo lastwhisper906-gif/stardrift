@@ -70,13 +70,20 @@ export class CorridorHangar {
     this.buildHangar()
   }
 
-  /** Animate launch hatch + bay door (open when sub-ship is launched). */
-  update(hatchOpen: boolean, dt: number): void {
+  /**
+   * Animate launch hatch + bay door.
+   * @param hatchOpen   true while sub-ship is launching / ascending
+   * @param showBayDoor true only while the pilot is seated in the subship cockpit;
+   *                    hides the door from the walking player so the hangar entrance
+   *                    stays visually open when walking through the corridor
+   */
+  update(hatchOpen: boolean, dt: number, showBayDoor: boolean): void {
     this.hatchTarget  = hatchOpen ? 1 : 0
     this.hatchOffset += (this.hatchTarget - this.hatchOffset) * Math.min(1, dt * 2.5)
     this.hatchLeft.position.x  = -0.7 - this.hatchOffset * 2.2
     this.hatchRight.position.x =  0.7 + this.hatchOffset * 2.2
-    // Bay door slides upward to expose the launch passage
+    // Bay door only exists for the sub-ship cockpit view; hide it when walking
+    this.bayDoor.visible = showBayDoor
     this.bayDoor.position.y = this.bayDoorClosedY + this.hatchOffset * this.bayDoorTravelY
   }
 
