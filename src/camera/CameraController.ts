@@ -170,17 +170,22 @@ export class CameraController {
           this._tmpV.z,
         )
 
-        // Base orientation: look at subship nose (world space point)
-        this._lookWorld.set(0, 0, -20)
-        this.subshipGroup.localToWorld(this._lookWorld)
-        this.camera.lookAt(this._lookWorld)
+        // Base orientation: directly copy subship's world rotation into camera local space.
+        // cameraLocalQ = inv(shipGroupWorldQ) * subshipWorldQ
+        // This keeps the cockpit horizon exactly aligned with the subship's actual up axis,
+        // so the view tilts naturally when the subship banks, lands, or pitches — no
+        // world-Y-up artifact from lookAt.
+        this.subshipGroup.getWorldQuaternion(this._subQ)
+        this.shipGroup.getWorldQuaternion(this._shipQ)
+        this._yawQ.copy(this._shipQ).invert()   // _yawQ = inv(shipWorldQ) — temp
+        this.camera.quaternion.multiplyQuaternions(this._yawQ, this._subQ)
 
-        // Apply FPS free-look offset on top of base orientation
-        // yaw around world Y (local Y ≈ world Y when ship is level)
-        // pitch around camera's right axis
+        // FPS free-look in subship-local axes:
+        // After the base rotation above, the camera's local Y = subship's local Y (up)
+        // and local X = subship's local X (right), so standard axis vectors are correct.
         this._yawQ.setFromAxisAngle(CameraController._Y_AXIS, this.pilotYaw)
         this._pitchQ.setFromAxisAngle(CameraController._X_AXIS, this.pilotPitch)
-        this.camera.quaternion.premultiply(this._yawQ).multiply(this._pitchQ)
+        this.camera.quaternion.multiply(this._yawQ).multiply(this._pitchQ)
       } else {
         this.camera.position.set(
           SUBSHIP_EYE.x + this.shakeX,
@@ -383,14 +388,7 @@ export class CameraController {
       const tC = (t - PHASE_B) / (1.0 - PHASE_B)
       const eC = tC < 0.5 ? 2 * tC * tC : 1 - Math.pow(-2 * tC + 2, 2) / 2
       worldPos = new Vector3().lerpVectors(this._reboardHatchIn, this._reboardSeat, eC)
-      // Look toward the subship nose as we settle in
-      if (this.subshipGroup) {
-        lookAt = new Vector3(0, 0, -20)
-          .applyQuaternion(this.subshipGroup.quaternion)
-          .add(this.subshipGroup.position)
-      } else {
-        lookAt = this._reboardSeat.clone()
-      }
+      lookAt = new Vector3()  // not used for phase C — orientation handled below
     }
 
     // Convert world → ship-local EACH FRAME (prevents mothership drift teleport glitch)
@@ -398,6 +396,18 @@ export class CameraController {
     this.shipGroup.worldToLocal(localPos)
     this.camera.position.copy(localPos)
 
-    this.camera.lookAt(lookAt)
+    if (t > PHASE_B && this.subshipGroup) {
+      // Phase C: slerp camera orientation toward exact subship rotation so it
+      // transitions seamlessly into subship_piloting mode with no snap.
+      const tC = (t - PHASE_B) / (1.0 - PHASE_B)
+      const eC = tC < 0.5 ? 2 * tC * tC : 1 - Math.pow(-2 * tC + 2, 2) / 2
+      this.subshipGroup.getWorldQuaternion(this._subQ)
+      this.shipGroup.getWorldQuaternion(this._shipQ)
+      this._yawQ.copy(this._shipQ).invert()
+      const targetLocalQ = new Quaternion().multiplyQuaternions(this._yawQ, this._subQ)
+      this.camera.quaternion.slerp(targetLocalQ, eC)
+    } else {
+      this.camera.lookAt(lookAt)
+    }
   }
 }
