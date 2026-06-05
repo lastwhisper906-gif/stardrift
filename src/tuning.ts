@@ -128,8 +128,11 @@ export const LAUNCH = {
 
 // ── Planet landing / surface sequence ───────────────────────────────────────
 export const LANDING = {
-  touchdownDur: 2.5,  // s — subship descends to surface (~2–3 s per spec)
-  disembarkDur: 1.4,  // s — camera lerps from cockpit to surface eye
-  reboardDur:   1.4,  // s — camera lerps back to cockpit on re-board
-  reboardDist:  8,    // m — must be within this distance of subship to re-board
+  touchdownDur:    4.2,   // was 2.5 — longer, more dramatic descent
+  disembarkDur:    2.2,   // was 1.4 — slower, weightless drift out
+  reboardDur:      1.8,   // was 1.4 — slower on the way back
+  reboardDist:     8,     // unchanged
+  settleOscFreq:   4.5,   // Hz — landing-leg spring oscillation
+  settleDecay:     5.0,   // damping for the settle oscillation
+  settleAmplitude: 0.35,  // m — max overshoot on first contact
 }

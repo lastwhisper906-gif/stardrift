@@ -245,6 +245,13 @@ export class CameraController {
     this._lerpEnd.copy(charWorldPos).addScaledVector(this._tmpV, SURFACE_EYE)
 
     const lerpWorld = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, t)
+
+    // Weightless float: bob the camera outward along the surface normal as it
+    // exits the hatch — peaks mid-move (sin), returns to the eye line at t=1.
+    const surfaceNormal = charWorldPos.clone().sub(planetCenter).normalize()
+    const arc = surfaceNormal.multiplyScalar(Math.sin(t * Math.PI) * 0.6)
+    lerpWorld.add(arc)
+
     this.shipGroup.worldToLocal(lerpWorld)
     this.camera.position.copy(lerpWorld)
 

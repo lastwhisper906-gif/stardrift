@@ -190,6 +190,7 @@ type LaunchPhase = 'docked' | 'hatch_open' | 'descending' | 'flying' | 'ascendin
 let launchPhase: LaunchPhase = 'docked'
 let subshipLocalY = 0.0
 let launchAnimT   = 0          // 0–1 progress through the eased descent/ascent
+let touchdownStartDist = 0     // captured descent-start radius for S-curve touchdown
 
 // Smootherstep ease-in-out: zero velocity at both ends → no abrupt start/stop
 function easeInOut(t: number): number {
@@ -622,26 +623,45 @@ function loop(): void {
       room.setState({ surface: { ...surf, landingProgress: progress } })
 
       // One-shot shakes: primary hull contact, then secondary settle
-      if (prevProg < 0.87 && progress >= 0.87) camCtrl.shake(0.8)
-      if (prevProg < 0.95 && progress >= 0.95) camCtrl.shake(0.35)
+      if (prevProg < 0.87 && progress >= 0.87) camCtrl.shake(1.2)
+      if (prevProg < 0.95 && progress >= 0.95) camCtrl.shake(0.5)
 
-      // Descend subship from stop radius toward surface
-      const center      = planetEvent.getPlanetCenter()
-      const subPos      = scene.subship.group.position
-      const toSurface   = subPos.clone().sub(center).normalize()
-      const targetDist  = PLANET_RADIUS + SURFACE_EYE + 0.5
-      const currentDist = subPos.distanceTo(center)
-      const newDist     = currentDist + (targetDist - currentDist) * Math.min(1, dt * 2.5)
+      // Capture the descent-start radius once, so the S-curve interpolates from a
+      // fixed point rather than the previous raw per-frame exponential lerp.
+      if (prevProg === 0) {
+        touchdownStartDist = scene.subship.group.position.distanceTo(planetEvent.getPlanetCenter())
+      }
+
+      // S-curve descent: ease-in/out from start radius to the surface eye.
+      const center     = planetEvent.getPlanetCenter()
+      const subPos     = scene.subship.group.position
+      const toSurface  = subPos.clone().sub(center).normalize()
+      const easedProg  = easeInOut(progress)
+      const targetDist = PLANET_RADIUS + SURFACE_EYE + 0.5
+      let   newDist    = touchdownStartDist + (targetDist - touchdownStartDist) * easedProg
+
+      // Spring-compressed settle after near-contact: legs compress, then the
+      // hull bounces back — a damped sine overshoot for cinematic weight.
+      if (progress > 0.85) {
+        const localT = (progress - 0.85) / 0.15
+        const settle = LANDING.settleAmplitude
+                     * Math.sin(localT * LANDING.settleOscFreq * Math.PI * 2)
+                     * Math.exp(-LANDING.settleDecay * localT)
+        newDist += settle
+      }
+
       scene.subship.group.position.copy(center).addScaledVector(toSurface, newDist)
       if (subshipState) subshipState = { ...subshipState, position: [subPos.x, subPos.y, subPos.z] as [number, number, number] }
 
-      // Gradually orient sub-ship so its belly faces the planet (up = surface normal)
+      // Orient sub-ship so its belly faces the planet (up = surface normal).
+      // Align slowly at first, peak at mid-descent, finish exactly aligned at contact.
       const surfUp = scene.subship.group.position.clone().sub(center).normalize()
       _landQuat.setFromUnitVectors(_shipUpVec, surfUp)
-      scene.subship.group.quaternion.slerp(_landQuat, Math.min(1, dt * 1.8))
+      const alignSpeed = easeInOut(Math.min(progress * 1.4, 1)) * 3.5
+      scene.subship.group.quaternion.slerp(_landQuat, Math.min(1, dt * alignSpeed))
 
-      // Deploy landing legs over the descent
-      scene.subship.deployLegs(progress)
+      // Deploy landing legs fully before the first surface contact.
+      scene.subship.deployLegs(easeInOut(Math.min(progress / 0.75, 1)))
 
       if (progress >= 1) {
         const center2  = planetEvent.getPlanetCenter()
@@ -671,7 +691,10 @@ function loop(): void {
       const progress = Math.min(1, surf.landingProgress + dt / LANDING.disembarkDur)
       room.setState({ surface: { ...surf, landingProgress: progress } })
 
-      const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
+      // Quintic ease: heavy start (pushing off the hatch), then weightless glide.
+      const ease = progress < 0.5
+        ? 16 * progress * progress * progress * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 5) / 2
       camCtrl.applyDisembarkLerp(charWorldPos, planetEvent.getPlanetCenter(), ease)
 
       if (progress >= 1) {
