@@ -7,6 +7,7 @@ import {
   PlaneGeometry,
   PointLight,
   SphereGeometry,
+  Vector3,
 } from 'three'
 import type { RawInput } from '../input/InputTypes.js'
 
@@ -52,6 +53,7 @@ export class SubshipVehicle {
   private hotasPitchL = 0
   private hotasPitchR = 0
   private readonly legGroups: Group[] = []
+  private hatchGroup!: Group
 
   constructor() {
     this.group = new Group()
@@ -62,6 +64,7 @@ export class SubshipVehicle {
 
     this.buildExterior()
     this.buildLegs()
+    this.buildHatch()
     this.buildRoom()
     this.buildCockpit()
 
@@ -89,6 +92,29 @@ export class SubshipVehicle {
    * Deploy (or retract) landing legs.
    * @param t  0 = tucked flush against hull, 1 = fully extended for touchdown
    */
+  /**
+   * Animate hatch open/close.
+   * t=0 → door flush with hull (closed), t=1 → door swung 90° outward (open).
+   */
+  openHatch(t: number): void {
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+    // Hinge at rear edge (+Z side). Negative Y rotation swings the door outward (+X).
+    this.hatchGroup.rotation.y = -Math.PI / 2 * ease
+  }
+
+  /**
+   * World-space center of the hatch opening (on the +X side, Z≈1.8).
+   * Used as the bezier waypoint for disembark / reboard camera paths.
+   * Slightly outside the hull so the camera clears the fuselage wall.
+   */
+  get hatchWorldPos(): Vector3 {
+    // Subship-local: X=2.0 (0.7 m outside the 1.3 exterior wall), Y=mid-height, Z=mid-hatch
+    const local = new Vector3(2.0, SUBSHIP_ROOM.floorY + 0.9, 1.8)
+    // applyQuaternion + add position is equivalent to localToWorld but doesn't depend on
+    // matrixWorld being refreshed this frame.
+    return local.applyQuaternion(this.group.quaternion).add(this.group.position)
+  }
+
   deployLegs(t: number): void {
     const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
     const signs = [-1, 1, -1, 1]   // left, right, left, right
@@ -131,6 +157,54 @@ export class SubshipVehicle {
       this.exteriorGroup.add(legGroup)
       this.legGroups.push(legGroup)
     }
+  }
+
+  // ── Side hatch (boarding door on +X wall, Z 0.8–2.8) ─────────────────────
+  private buildHatch(): void {
+    const hullMat = mat(0x1c2438, 0.70, 0.30)   // same colour as fuselage
+    const frameMat = mat(0x0e1018, 0.60, 0.45)  // dark frame
+    const stepMat  = mat(0x1a1e2c, 0.82, 0.22)  // metal step
+
+    const hatchL = 2.0  // Z-length of opening (0.8 → 2.8)
+    const hatchH = SUBSHIP_ROOM.ceilY - SUBSHIP_ROOM.floorY  // 1.8 m
+
+    // ── Door panel ──────────────────────────────────────────────────────────
+    // hatchGroup pivot = hinge at rear edge of opening, flush with the right exterior wall.
+    // Local Z of hinge: +2.8 (rear edge), Local Y: floor level, Local X: +1.3 (right wall)
+    this.hatchGroup = new Group()
+    this.hatchGroup.position.set(1.3, SUBSHIP_ROOM.floorY, 2.8)
+    this.exteriorGroup.add(this.hatchGroup)
+
+    // Door panel sits in hatch-group local space.
+    // It is centred at (0, hatchH/2, −hatchL/2) so it covers the opening exactly.
+    const door = new Mesh(new BoxGeometry(0.07, hatchH, hatchL), hullMat)
+    door.position.set(0, hatchH / 2, -hatchL / 2)
+    this.hatchGroup.add(door)
+
+    // Thin frame around the door opening (fixed, part of exteriorGroup, not hatchGroup)
+    const frameThk = 0.06
+    // Top rail
+    const topRail = new Mesh(new BoxGeometry(frameThk, frameThk, hatchL + frameThk * 2), frameMat)
+    topRail.position.set(1.3, SUBSHIP_ROOM.ceilY + frameThk / 2, 1.8)
+    this.exteriorGroup.add(topRail)
+    // Bottom sill
+    const botSill = new Mesh(new BoxGeometry(frameThk, frameThk, hatchL + frameThk * 2), frameMat)
+    botSill.position.set(1.3, SUBSHIP_ROOM.floorY - frameThk / 2, 1.8)
+    this.exteriorGroup.add(botSill)
+    // Front upright (Z = 0.8 edge)
+    const frontPost = new Mesh(new BoxGeometry(frameThk, hatchH, frameThk), frameMat)
+    frontPost.position.set(1.3, SUBSHIP_ROOM.floorY + hatchH / 2, 0.8)
+    this.exteriorGroup.add(frontPost)
+    // Rear upright (Z = 2.8 edge / hinge side)
+    const rearPost = new Mesh(new BoxGeometry(frameThk, hatchH, frameThk), frameMat)
+    rearPost.position.set(1.3, SUBSHIP_ROOM.floorY + hatchH / 2, 2.8)
+    this.exteriorGroup.add(rearPost)
+
+    // ── Boarding step ────────────────────────────────────────────────────────
+    // A small platform just below the hatch opening so the boarding animation looks natural.
+    const step = new Mesh(new BoxGeometry(0.55, 0.07, 0.60), stepMat)
+    step.position.set(1.65, SUBSHIP_ROOM.floorY - 0.22, 1.8)
+    this.exteriorGroup.add(step)
   }
 
   // ── Exterior hull ──────────────────────────────────────────────────────────

@@ -128,8 +128,8 @@ export const LAUNCH = {
 
 // ── Planet landing / surface sequence ───────────────────────────────────────
 export const LANDING = {
-  touchdownDur: 2.5,  // s — subship descends to surface (~2–3 s per spec)
-  disembarkDur: 1.4,  // s — camera lerps from cockpit to surface eye
-  reboardDur:   1.4,  // s — camera lerps back to cockpit on re-board
-  reboardDist:  8,    // m — must be within this distance of subship to re-board
+  touchdownDur: 2.5,  // s — subship descends to surface
+  disembarkDur: 2.8,  // s — camera exits through hatch to surface eye
+  reboardDur:   3.8,  // s — 3-phase reboard: walk to hatch, climb in, sit down
+  reboardDist:  12,   // m — must be within this distance of subship to re-board
 }

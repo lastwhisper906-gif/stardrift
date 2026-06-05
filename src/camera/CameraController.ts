@@ -4,6 +4,7 @@ import type { CharacterController } from '../character/CharacterController.js'
 import { ROOM } from '../render/CockpitRoom.js'
 import { HANGAR } from '../render/CorridorHangar.js'
 import { SURFACE_EYE } from '../render/PlanetMesh.js'
+import { SUBSHIP_ROOM } from '../render/SubshipVehicle.js'
 
 export type CameraMode = 'walking' | 'piloting' | 'exterior' | 'subship_piloting' | 'planet_surface'
 
@@ -45,6 +46,17 @@ export class CameraController {
   private readonly _pitchQ    = new Quaternion()
   private readonly _lerpStart = new Vector3()
   private readonly _lerpEnd   = new Vector3()
+
+  // Disembark path waypoints (world space)
+  private readonly _disembarkHatch = new Vector3()
+  private _hasDisembarkHatch = false
+
+  // Reboard path waypoints (world space)
+  private readonly _reboardHatchOut = new Vector3()  // outside the hull
+  private readonly _reboardHatchIn  = new Vector3()  // just inside the doorframe
+  private readonly _reboardSeat     = new Vector3()  // cockpit eye
+  private readonly _reboardSurfUp   = new Vector3()  // surface normal at reboard start
+
   private subshipGroup: Group | null = null
 
   private static readonly _Y_AXIS = new Vector3(0, 1, 0)
@@ -235,38 +247,157 @@ export class CameraController {
 
   getCamPitch(): number { return this.camPitch }
 
-  beginDisembarkLerp(): void {
+  /**
+   * Call once when disembark begins.
+   * hatchWorldPos: world-space center of the open hatch (SubshipVehicle.hatchWorldPos).
+   * This is stored as the bezier control point so the camera exits through the door.
+   */
+  beginDisembarkLerp(hatchWorldPos?: Vector3): void {
+    // Capture camera start in world space
     this._lerpStart.copy(this.camera.position)
     this.shipGroup.localToWorld(this._lerpStart)
+
+    if (hatchWorldPos) {
+      this._disembarkHatch.copy(hatchWorldPos)
+      this._hasDisembarkHatch = true
+    } else {
+      this._hasDisembarkHatch = false
+    }
   }
 
+  /**
+   * Call every frame during disembarking (t: 0→1, pre-eased).
+   * Uses a quadratic bezier: cockpit eye → hatch opening → surface eye.
+   * Converts world→ship-local each frame so mothership drift doesn't cause teleport.
+   */
   applyDisembarkLerp(charWorldPos: Vector3, planetCenter: Vector3, t: number): void {
-    this._tmpV.copy(charWorldPos).sub(planetCenter).normalize()
-    this._lerpEnd.copy(charWorldPos).addScaledVector(this._tmpV, SURFACE_EYE)
+    // Compute surface eye destination every frame (planet may be moving relative to ship)
+    const up = new Vector3().copy(charWorldPos).sub(planetCenter).normalize()
+    this._lerpEnd.copy(charWorldPos).addScaledVector(up, SURFACE_EYE)
 
-    const lerpWorld = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, t)
-    this.shipGroup.worldToLocal(lerpWorld)
-    this.camera.position.copy(lerpWorld)
+    let worldPos: Vector3
 
-    const fwdWorld = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, Math.min(1, t + 0.3))
-    this.camera.lookAt(fwdWorld)
+    if (this._hasDisembarkHatch) {
+      // Quadratic bezier: P0=cockpit, P1=hatch, P2=surface eye
+      // This curves the path through the hatch opening naturally.
+      const s = 1 - t
+      worldPos = new Vector3()
+        .addScaledVector(this._lerpStart,      s * s)
+        .addScaledVector(this._disembarkHatch, 2 * s * t)
+        .addScaledVector(this._lerpEnd,        t * t)
+    } else {
+      // Fallback: straight lerp
+      worldPos = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, t)
+    }
+
+    // Convert world → ship-local EACH frame to prevent mothership drift glitch
+    const localPos = worldPos.clone()
+    this.shipGroup.worldToLocal(localPos)
+    this.camera.position.copy(localPos)
+
+    // Camera looks toward the destination: toward hatch for first half, then toward surface
+    const lookTarget = t < 0.6
+      ? this._disembarkHatch.clone()
+      : this._lerpEnd.clone()
+    this.camera.lookAt(lookTarget)
   }
 
-  beginReboardLerp(subshipGroup: Group): void {
+  /**
+   * Call once when reboard begins.
+   * Precomputes all waypoints in world space so the 3-phase path is stable.
+   *
+   * Phase A (t 0.00–0.30): arc from surface to just outside the hatch
+   * Phase B (t 0.30–0.58): climb from outside into the doorframe
+   * Phase C (t 0.58–1.00): slide from doorframe into pilot seat
+   */
+  beginReboardLerp(
+    subshipGroup: Group,
+    charWorldPos: Vector3,
+    planetCenter: Vector3,
+  ): void {
+    // Capture current camera position in world space
     this._lerpStart.copy(this.camera.position)
     this.shipGroup.localToWorld(this._lerpStart)
 
-    this._tmpV.copy(SUBSHIP_LOCAL)
-    subshipGroup.localToWorld(this._tmpV)
-    this._lerpEnd.copy(this._tmpV)
+    // Surface normal (radial outward) at the character's feet
+    this._reboardSurfUp.copy(charWorldPos).sub(planetCenter).normalize()
+
+    // Waypoint A — just outside the hatch opening (+X side of hull)
+    // Subship-local: X=2.0 (outside 1.3 wall), Y=mid-height, Z=1.8 (mid-door)
+    this._reboardHatchOut
+      .set(2.0, SUBSHIP_ROOM.floorY + 0.9, 1.8)
+      .applyQuaternion(subshipGroup.quaternion)
+      .add(subshipGroup.position)
+
+    // Waypoint B — just inside the doorframe (0.5 m inward from the wall)
+    this._reboardHatchIn
+      .set(0.7, SUBSHIP_ROOM.floorY + 0.7, 1.8)
+      .applyQuaternion(subshipGroup.quaternion)
+      .add(subshipGroup.position)
+
+    // Waypoint C — cockpit eye (SUBSHIP_LOCAL in world space)
+    this._reboardSeat.copy(SUBSHIP_LOCAL)
+      .applyQuaternion(subshipGroup.quaternion)
+      .add(subshipGroup.position)
+
+    this._lerpEnd.copy(this._reboardSeat)
   }
 
+  /**
+   * Call every frame during reboarding (t: 0→1, pre-eased).
+   * Three phases give the feeling of walking to the ship, climbing in, and sitting down.
+   */
   applyReboardLerp(t: number): void {
-    const lerpWorld = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, t)
-    this.shipGroup.worldToLocal(lerpWorld)
-    this.camera.position.copy(lerpWorld)
+    const PHASE_A = 0.30   // 0.00–0.30 walk to hatch
+    const PHASE_B = 0.58   // 0.30–0.58 climb through hatch
+    //                        0.58–1.00 slide into seat
 
-    const fwdWorld = new Vector3().lerpVectors(this._lerpStart, this._lerpEnd, Math.min(1, t + 0.3))
-    this.camera.lookAt(fwdWorld)
+    let worldPos: Vector3
+    let lookAt: Vector3
+
+    if (t <= PHASE_A) {
+      // Phase A: quadratic bezier arc from surface → hatch exterior
+      // Arc slightly upward (surface normal direction) so it looks like climbing a step.
+      const tA = t / PHASE_A
+      const eA = tA < 0.5 ? 2 * tA * tA : 1 - Math.pow(-2 * tA + 2, 2) / 2
+      const mid = new Vector3()
+        .addVectors(this._lerpStart, this._reboardHatchOut)
+        .multiplyScalar(0.5)
+        .addScaledVector(this._reboardSurfUp, 0.5)   // lift arc 0.5 m upward
+      const s = 1 - eA
+      worldPos = new Vector3()
+        .addScaledVector(this._lerpStart,       s * s)
+        .addScaledVector(mid,                   2 * s * eA)
+        .addScaledVector(this._reboardHatchOut, eA * eA)
+      lookAt = this._reboardHatchOut.clone()
+
+    } else if (t <= PHASE_B) {
+      // Phase B: straight lerp from hatch exterior → inside doorframe
+      const tB = (t - PHASE_A) / (PHASE_B - PHASE_A)
+      const eB = tB < 0.5 ? 2 * tB * tB : 1 - Math.pow(-2 * tB + 2, 2) / 2
+      worldPos = new Vector3().lerpVectors(this._reboardHatchOut, this._reboardHatchIn, eB)
+      lookAt = this._reboardSeat.clone()
+
+    } else {
+      // Phase C: ease into pilot seat — slow start (ducking in), smooth end (settling)
+      const tC = (t - PHASE_B) / (1.0 - PHASE_B)
+      const eC = tC < 0.5 ? 2 * tC * tC : 1 - Math.pow(-2 * tC + 2, 2) / 2
+      worldPos = new Vector3().lerpVectors(this._reboardHatchIn, this._reboardSeat, eC)
+      // Look toward the subship nose as we settle in
+      if (this.subshipGroup) {
+        lookAt = new Vector3(0, 0, -20)
+          .applyQuaternion(this.subshipGroup.quaternion)
+          .add(this.subshipGroup.position)
+      } else {
+        lookAt = this._reboardSeat.clone()
+      }
+    }
+
+    // Convert world → ship-local EACH FRAME (prevents mothership drift teleport glitch)
+    const localPos = worldPos.clone()
+    this.shipGroup.worldToLocal(localPos)
+    this.camera.position.copy(localPos)
+
+    this.camera.lookAt(lookAt)
   }
 }

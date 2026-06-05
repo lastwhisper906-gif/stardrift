@@ -377,7 +377,7 @@ function loop(): void {
       const _distToSub = charWorldPos.distanceTo(scene.subship.group.position)
       if (_distToSub <= LANDING.reboardDist) {
         keyboard.releasePointerLock()
-        camCtrl.beginReboardLerp(scene.subship.group)
+        camCtrl.beginReboardLerp(scene.subship.group, charWorldPos, planetEvent.getPlanetCenter())
         hud.setAnchorPrompt(false, false)
         hud.setReboardPrompt(false)
         room.setState({ surface: { ...room.getState().surface,
@@ -648,7 +648,9 @@ function loop(): void {
         const toCenter = scene.subship.group.position.clone().sub(center2)
         charWorldPos.copy(center2).addScaledVector(toCenter.normalize(), PLANET_RADIUS + SURFACE_FOOT)
         camCtrl.setWalkYaw(Math.PI + Math.atan2(toCenter.x, toCenter.z))
-        camCtrl.beginDisembarkLerp()
+        // Force matrix update so hatchWorldPos is accurate this frame
+        scene.subship.group.updateWorldMatrix(true, false)
+        camCtrl.beginDisembarkLerp(scene.subship.hatchWorldPos)
         subshipArms.setVisible(false)   // hide cockpit arms as camera leaves cockpit
         iceAxeView.group.visible      = true
         iceAxeView.worldGroup.visible = true
@@ -671,10 +673,15 @@ function loop(): void {
       const progress = Math.min(1, surf.landingProgress + dt / LANDING.disembarkDur)
       room.setState({ surface: { ...surf, landingProgress: progress } })
 
+      // Open hatch as camera exits: swing open during first 50% of animation
+      const hatchOpenT = Math.min(1, progress / 0.5)
+      scene.subship.openHatch(hatchOpenT)
+
       const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
       camCtrl.applyDisembarkLerp(charWorldPos, planetEvent.getPlanetCenter(), ease)
 
       if (progress >= 1) {
+        scene.subship.openHatch(0)   // close hatch once player is outside
         // Camera has reached surface eye — enter tethering phase
         character.mesh.visible = false
         room.setState({ surface: { ...room.getState().surface, landingPhase: 'tethering', landingProgress: 0 } })
@@ -701,15 +708,21 @@ function loop(): void {
           leftAnchorPos: landPos, rightAnchorPos: landPos } })
       }
     } else if (surf.landingPhase === 'reboarding') {
-      // ── Camera lerps from surface eye back to subship cockpit eye ────────
+      // ── 3-phase cinematic reboard: walk → climb → sit ────────────────────
       const progress = Math.min(1, surf.landingProgress + dt / LANDING.reboardDur)
       room.setState({ surface: { ...surf, landingProgress: progress } })
+
+      // Hatch: open for phases A+B (progress 0–0.58), close as player settles (phase C)
+      const hatchT = progress < 0.58
+        ? Math.min(1, progress / 0.15)          // snap open quickly at the start
+        : 1.0 - (progress - 0.58) / (1.0 - 0.58)  // close during phase C
+      scene.subship.openHatch(Math.max(0, hatchT))
 
       const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
       camCtrl.applyReboardLerp(ease)
 
       if (progress >= 1) {
-        // Camera is back at cockpit eye — hand control to subship_piloting
+        scene.subship.openHatch(0)            // ensure hatch fully closed
         planetLandPhase               = 'none'
         landCooldown                  = 15   // suppress land prompt briefly after reboarding
         iceAxeView.group.visible      = false
