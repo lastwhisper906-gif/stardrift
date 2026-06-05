@@ -7,8 +7,8 @@ import {
 } from 'three'
 
 export const PLANET_RADIUS      = 350   // m — geometric radius of the planet sphere
-export const SURFACE_FOOT       = 0.05  // m — character foot above raw PLANET_RADIUS
-export const SURFACE_EYE        = 0.90  // m — camera eye above foot (first-person height)
+export const SURFACE_FOOT       = 3.0   // m — character floats ~3 m above the icy sphere (zero-g astronaut)
+export const SURFACE_EYE        = 1.0   // m — camera eye above foot (first-person height)
 export const SURFACE_EYE_RADIUS = PLANET_RADIUS + SURFACE_FOOT + SURFACE_EYE
 
 export interface ResourceNode {

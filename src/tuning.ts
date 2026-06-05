@@ -68,7 +68,7 @@ export const CLIMBING = {
   zeroGDamping:    0.8,   // velocity fraction retained per second when coasting (Newtonian drift)
   springK:         7,     // m/s² per metre of axe stretch (hold-to-reel stiffness)
   springDamping:   2.2,   // s⁻¹ velocity damping while reeling (prevents oscillation)
-  axeMaxReach:     50,    // m — max grapple distance; aiming beyond this finds no anchor
+  axeMaxReach:     65,    // m — max grapple distance; aiming beyond this finds no anchor (compensates for +3 m float)
   maxSpeed:        22,    // m/s — clamp to prevent runaway drift
   surfaceFriction: 1.0,   // tangential velocity retained on surface graze (1.0 = no ground friction, per P3)
 }
