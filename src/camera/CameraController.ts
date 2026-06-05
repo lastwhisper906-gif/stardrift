@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Quaternion, Vector3 } from 'three'
+import { Matrix4, PerspectiveCamera, Quaternion, Vector3 } from 'three'
 import type { Group } from 'three'
 import type { CharacterController } from '../character/CharacterController.js'
 import { ROOM } from '../render/CockpitRoom.js'
@@ -72,32 +72,69 @@ export class CameraController {
     if (this.mode === 'planet_surface' && planetCtx) {
       const { charWorldPos, planetCenter, rotateLeft, rotateRight } = planetCtx
 
+      // ── 1. Accumulate yaw / pitch ─────────────────────────────────────
+      const MOUSE_SENS = 0.0025
       const YAW_SPEED  = 1.8
-      const MOUSE_SENS = 0.0022
-      if (rotateLeft)  this.camYaw -= YAW_SPEED * dt
-      if (rotateRight) this.camYaw += YAW_SPEED * dt
-      if (planetCtx.mouseDX) this.camYaw   += planetCtx.mouseDX * MOUSE_SENS
-      if (planetCtx.mouseDY) this.camPitch  = Math.max(-1.48, Math.min(0.8,
-        this.camPitch - planetCtx.mouseDY * MOUSE_SENS))
-
-      const up  = this._tmpV.copy(charWorldPos).sub(planetCenter).normalize()
-
-      this._lookWorld.copy(charWorldPos).addScaledVector(up, SURFACE_EYE)
-      this.shipGroup.worldToLocal(this._lookWorld)
-      this.camera.position.set(
-        this._lookWorld.x + this.shakeX,
-        this._lookWorld.y + this.shakeY,
-        this._lookWorld.z,
+      if (rotateLeft)           this.camYaw -= YAW_SPEED * dt
+      if (rotateRight)          this.camYaw += YAW_SPEED * dt
+      if (planetCtx.mouseDX)   this.camYaw   += planetCtx.mouseDX * MOUSE_SENS
+      if (planetCtx.mouseDY)   this.camPitch += planetCtx.mouseDY * MOUSE_SENS
+      // Full ±90°: player can look straight down at the planet
+      this.camPitch = Math.max(
+        -Math.PI / 2 + 0.02,
+        Math.min(Math.PI / 2 - 0.02, this.camPitch),
       )
 
-      const cf   = new Vector3(-Math.sin(this.camYaw), 0, -Math.cos(this.camYaw))
-      const fwdT = cf.clone().addScaledVector(up, -up.dot(cf)).normalize()
+      // ── 2. Surface-normal "up" (radial outward from planet center) ────
+      const up = new Vector3().copy(charWorldPos).sub(planetCenter).normalize()
 
-      const lookTarget = charWorldPos.clone()
-        .addScaledVector(up, SURFACE_EYE)
-        .addScaledVector(fwdT, 5 * Math.cos(this.camPitch))
-        .addScaledVector(up,   5 * Math.sin(this.camPitch))
-      this.camera.lookAt(lookTarget)
+      // ── 3. Stable tangent-plane basis (north + east) ──────────────────
+      const worldY = new Vector3(0, 1, 0)
+      const dotUpY = up.dot(worldY)
+      const north  = Math.abs(dotUpY) < 0.99
+        ? worldY.clone().addScaledVector(up, -dotUpY).normalize()
+        : new Vector3(1, 0, 0).addScaledVector(up, -up.x).normalize()
+      const east = new Vector3().crossVectors(up, north)  // unit if north & up are unit
+
+      // ── 4. Forward direction in tangent plane after yaw ───────────────
+      // camYaw = 0 → north;  camYaw = +π/2 → east
+      const fwd = new Vector3()
+        .addScaledVector(north, Math.cos(this.camYaw))
+        .addScaledVector(east,  Math.sin(this.camYaw))
+
+      // Camera right: cross(fwd, up) — stays in tangent plane
+      const camRight = new Vector3().crossVectors(fwd, up)
+
+      // ── 5. Apply pitch: tilt forward toward / away from planet ────────
+      // camPitch > 0 → look up (away from planet)
+      // camPitch < 0 → look down (toward planet center)
+      const lookDir = new Vector3()
+        .addScaledVector(fwd, Math.cos(this.camPitch))
+        .addScaledVector(up,  Math.sin(this.camPitch))
+
+      // Camera up after pitch
+      const camUp = new Vector3().crossVectors(camRight, lookDir).normalize()
+
+      // ── 6. Eye position (world space) ────────────────────────────────
+      this._lookWorld.copy(charWorldPos).addScaledVector(up, SURFACE_EYE)
+
+      // ── 7. Camera position (convert to ship-local as the rest of file does)
+      const eyeLocal = this._lookWorld.clone()
+      this.shipGroup.worldToLocal(eyeLocal)
+      this.camera.position.set(
+        eyeLocal.x + this.shakeX,
+        eyeLocal.y + this.shakeY,
+        eyeLocal.z,
+      )
+
+      // ── 8. Camera orientation from lookDir + camUp ────────────────────
+      // Three.js: camera looks down local -Z, local +Y = up
+      // Build rotation matrix from right/up/back axes:
+      const zAxis = lookDir.clone().negate()                              // +Z = backward
+      const xAxis = new Vector3().crossVectors(camUp, zAxis).normalize() // +X = right
+      const yAxis = new Vector3().crossVectors(zAxis, xAxis)             // +Y = recomputed up
+      const rotMat = new Matrix4().makeBasis(xAxis, yAxis, zAxis)
+      this.camera.quaternion.setFromRotationMatrix(rotMat)
 
       this.posReady = false
       return
